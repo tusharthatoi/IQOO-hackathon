@@ -1,0 +1,86 @@
+[
+  {
+    "food_id": "biryani_01",
+    "name": "Biryani",
+    "category": "Rice Dishes",
+    "serving_unit": "plate",
+    "default_grams": 250.0,
+    "calories_per_100g": 165.0,
+    "protein_per_100g": 7.5,
+    "carbs_per_100g": 24.0,
+    "fat_per_100g": 4.5,
+    "fiber_per_100g": 1.2
+  },
+  {
+    "food_id": "dosa_01",
+    "name": "Dosa",
+    "category": "South Indian",
+    "serving_unit": "piece",
+    "default_grams": 150.0,
+    "calories_per_100g": 168.0,
+    "protein_per_100g": 3.9,
+    "carbs_per_100g": 29.0,
+    "fat_per_100g": 3.7,
+    "fiber_per_100g": 1.4
+  },
+  {
+    "food_id": "paneer_tikka_01",
+    "name": "Paneer Tikka",
+    "category": "Starters",
+    "serving_unit": "portion",
+    "default_grams": 180.0,
+    "calories_per_100g": 240.0,
+    "protein_per_100g": 14.0,
+    "carbs_per_100g": 6.0,
+    "fat_per_100g": 18.0,
+    "fiber_per_100g": 1.0
+  },
+  {
+    "food_id": "roti_01",
+    "name": "Roti",
+    "category": "Breads",
+    "serving_unit": "piece",
+    "default_grams": 40.0,
+    "calories_per_100g": 264.0,
+    "protein_per_100g": 9.0,
+    "carbs_per_100g": 55.0,
+    "fat_per_100g": 3.0,
+    "fiber_per_100g": 9.0
+  },
+  {
+    "food_id": "dal_tadka_01",
+    "name": "Dal Tadka",
+    "category": "Lentils",
+    "serving_unit": "bowl",
+    "default_grams": 200.0,
+    "calories_per_100g": 110.0,
+    "protein_per_100g": 6.0,
+    "carbs_per_100g": 14.0,
+    "fat_per_100g": 3.5,
+    "fiber_per_100g": 4.0
+  },
+  {
+    "food_id": "chicken_curry_01",
+    "name": "Chicken Curry",
+    "category": "Main Course",
+    "serving_unit": "bowl",
+    "default_grams": 220.0,
+    "calories_per_100g": 145.0,
+    "protein_per_100g": 16.0,
+    "carbs_per_100g": 4.0,
+    "fat_per_100g": 7.5,
+    "fiber_per_100g": 1.0
+  },
+  {
+    "food_id": "salad_01",
+    "name": "Green Salad",
+    "category": "Salads",
+    "serving_unit": "bowl",
+    "default_grams": 150.0,
+    "calories_per_100g": 35.0,
+    "protein_per_100g": 1.5,
+    "carbs_per_100g": 7.0,
+    "fat_per_100g": 0.5,
+    "fiber_per_100g": 2.5
+  }
+]

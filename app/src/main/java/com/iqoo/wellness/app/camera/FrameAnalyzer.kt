@@ -1,0 +1,50 @@
+package com.iqoo.wellness.app.camera
+
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import java.nio.ByteBuffer
+
+/**
+ * Listener for analyzed camera frames.
+ */
+fun interface FrameListener {
+    fun onFrameAvailable(width: Int, height: Int, rotationDegrees: Int, planes: Array<ByteBuffer>)
+}
+
+/**
+ * Backpressure-safe CameraX frame analyzer.
+ * Uses STRATEGY_KEEP_ONLY_LATEST and frame skipping to control AI analysis FPS (5-10 FPS),
+ * preventing thermal buildup on mobile devices.
+ */
+class FrameAnalyzer(
+    private val targetFps: Int = 10,
+    private val listener: FrameListener
+) : ImageAnalysis.Analyzer {
+
+    private val minFrameIntervalMs = 1000L / targetFps
+    private var lastAnalyzedTimestampMs = 0L
+
+    override fun analyze(image: ImageProxy) {
+        val currentTimestampMs = System.currentTimeMillis()
+        if (currentTimestampMs - lastAnalyzedTimestampMs < minFrameIntervalMs) {
+            // Drop frame to maintain controlled inference FPS and preserve thermals
+            image.close()
+            return
+        }
+
+        try {
+            lastAnalyzedTimestampMs = currentTimestampMs
+            val planes = Array(image.planes.size) { i -> image.planes[i].buffer }
+            listener.onFrameAvailable(
+                width = image.width,
+                height = image.height,
+                rotationDegrees = image.imageInfo.rotationDegrees,
+                planes = planes
+            )
+        } catch (_: Exception) {
+            // Fail gracefully without crashing camera stream
+        } finally {
+            image.close()
+        }
+    }
+}
