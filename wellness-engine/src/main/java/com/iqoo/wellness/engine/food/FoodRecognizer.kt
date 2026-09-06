@@ -1,11 +1,14 @@
 package com.iqoo.wellness.engine.food
 
+import android.graphics.Bitmap
+
 /**
  * On-device food recognition abstraction.
  * Decouples the computer vision inference layer from personalization and business logic.
  */
 interface FoodRecognizer {
     suspend fun recognizeFood(imageData: ByteArray? = null): List<RecognizedFoodItem>
+    suspend fun recognizeFood(bitmap: Bitmap): List<RecognizedFoodItem> = recognizeFood(null)
 }
 
 /**

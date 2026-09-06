@@ -1,6 +1,7 @@
 package com.iqoo.wellness.app
 
 import android.content.Context
+import android.graphics.Bitmap
 import com.iqoo.wellness.app.camera.FrameListener
 import com.iqoo.wellness.engine.WellnessEngine
 import com.iqoo.wellness.engine.WellnessEngineImpl
@@ -37,6 +38,7 @@ class WellnessManager(
     }
 
     override fun onFrameAvailable(
+        bitmap: Bitmap?,
         width: Int,
         height: Int,
         rotationDegrees: Int,
@@ -44,24 +46,32 @@ class WellnessManager(
     ) {
         scope.launch {
             try {
+                android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Active mode: $activeMode")
                 // Cascaded frame dispatching according to active mode
                 when (activeMode) {
                     SceneType.FOOD -> {
-                        val result = engine.analyzeFood()
+                        val result = if (bitmap != null) {
+                            engine.analyzeFood(bitmap)
+                        } else {
+                            engine.analyzeFood()
+                        }
+                        android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Food analysis output: ${result?.displayHeading}, calories=${result?.nutrition?.calories}")
                         onFoodAnalyzed?.invoke(result)
                     }
                     SceneType.EXERCISE -> {
                         val feedback = engine.analyzePose()
+                        android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Posture output: rep=${feedback?.repCount}, state=${feedback?.currentState}, angle=${feedback?.primaryAngleDegrees}")
                         onPostureAnalyzed?.invoke(feedback)
                     }
                     SceneType.NORMAL -> {
                         // Cascaded scene check
                         val scene = engine.analyzeScene()
+                        android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Scene classified: $scene")
                         onSceneDetected?.invoke(scene)
                     }
                 }
-            } catch (_: Exception) {
-                // Ensure frame analysis failure never crashes the camera stream
+            } catch (e: Exception) {
+                android.util.Log.e("IQOO_WELLNESS", "[PIPELINE] Error in frame pipeline: ${e.message}", e)
             }
         }
     }

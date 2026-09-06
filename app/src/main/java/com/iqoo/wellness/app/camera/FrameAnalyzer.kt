@@ -1,5 +1,7 @@
 package com.iqoo.wellness.app.camera
 
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import java.nio.ByteBuffer
@@ -8,7 +10,13 @@ import java.nio.ByteBuffer
  * Listener for analyzed camera frames.
  */
 fun interface FrameListener {
-    fun onFrameAvailable(width: Int, height: Int, rotationDegrees: Int, planes: Array<ByteBuffer>)
+    fun onFrameAvailable(
+        bitmap: Bitmap?,
+        width: Int,
+        height: Int,
+        rotationDegrees: Int,
+        planes: Array<ByteBuffer>
+    )
 }
 
 /**
@@ -34,15 +42,27 @@ class FrameAnalyzer(
 
         try {
             lastAnalyzedTimestampMs = currentTimestampMs
+            val rotationDegrees = image.imageInfo.rotationDegrees
+            android.util.Log.d("IQOO_WELLNESS", "[CAMERA] Frame received: ${image.width}x${image.height}, rotation=$rotationDegrees")
             val planes = Array(image.planes.size) { i -> image.planes[i].buffer }
+
+            val rawBitmap = image.toBitmap()
+            val orientedBitmap = if (rotationDegrees != 0) {
+                val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+            } else {
+                rawBitmap
+            }
+
             listener.onFrameAvailable(
+                bitmap = orientedBitmap,
                 width = image.width,
                 height = image.height,
-                rotationDegrees = image.imageInfo.rotationDegrees,
+                rotationDegrees = rotationDegrees,
                 planes = planes
             )
-        } catch (_: Exception) {
-            // Fail gracefully without crashing camera stream
+        } catch (e: Exception) {
+            android.util.Log.e("IQOO_WELLNESS", "[CAMERA] Error analyzing frame: ${e.message}", e)
         } finally {
             image.close()
         }

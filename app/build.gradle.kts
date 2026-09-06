@@ -36,6 +36,10 @@ android {
         jvmTarget = "17"
     }
 
+    aaptOptions {
+        noCompress("tflite")
+    }
+
     buildFeatures {
         viewBinding = true
     }
@@ -43,6 +47,9 @@ android {
 
 dependencies {
     implementation(project(":wellness-engine"))
+
+    // TensorFlow Lite
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
 
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")

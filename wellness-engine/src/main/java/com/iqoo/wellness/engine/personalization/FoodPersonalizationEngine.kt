@@ -42,14 +42,28 @@ class FoodPersonalizationEngine(
 
         // 2. Determine if meaningful user history exists
         if (prepContext != null || avgPortion != null) {
-            val typicalGrams = prepContext?.typicalPortionGrams
-                ?: avgPortion
-                ?: seedFood?.defaultGrams
-                ?: foodItem.estimatedAreaPortionGrams
+            val typicalGrams = when {
+                avgPortion != null -> (Math.round(avgPortion * 10.0) / 10.0)
+                prepContext != null -> prepContext.typicalPortionGrams
+                seedFood != null -> seedFood.defaultGrams
+                else -> foodItem.estimatedAreaPortionGrams
+            }
 
             // Parse ingredients if stored
             val ingredientMap = parseJsonMap(prepContext?.ingredientQuantitiesJson)
             val substitutionsMap = parseJsonStringMap(prepContext?.substitutionsJson)
+
+            val explanation = if (seedFood != null) {
+                buildExplanation(
+                    foodName = foodName,
+                    portion = typicalGrams,
+                    cookingMethod = prepContext?.cookingMethod,
+                    oilLevel = prepContext?.oilFatLevel,
+                    recurrence = prepContext?.recurrenceCount ?: 1
+                )
+            } else {
+                "Food recognized, but nutrition data is unavailable."
+            }
 
             val context = PersonalizedFoodContext(
                 foodId = foodId,
@@ -65,29 +79,23 @@ class FoodPersonalizationEngine(
                 substitutions = substitutionsMap,
                 userCorrections = prepContext?.userCorrections,
                 recurrenceCount = prepContext?.recurrenceCount ?: 1,
-                explanation = buildExplanation(
-                    foodName = foodName,
-                    portion = typicalGrams,
-                    cookingMethod = prepContext?.cookingMethod,
-                    oilLevel = prepContext?.oilFatLevel,
-                    recurrence = prepContext?.recurrenceCount ?: 1
-                )
+                explanation = explanation
             )
 
             // 3. Compute personalized nutrition using retrieved context
             val nutrition = if (seedFood != null) {
                 NutritionCalculator.calculatePersonalized(seedFood, context)
             } else {
-                // Fallback baseline heuristic if dish is not in seed DB
-                generateFallbackNutrition(typicalGrams)
+                // Do not fabricate calories when uncatalogued
+                NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, typicalGrams)
             }
 
             return PersonalizedNutritionResult(
                 foodItem = foodItem,
                 context = context,
                 nutrition = nutrition,
-                isPersonalized = true,
-                displayHeading = "$foodName — Personalized estimate",
+                isPersonalized = seedFood != null,
+                displayHeading = if (seedFood != null) "$foodName — Personalized estimate" else "$foodName — Uncatalogued",
                 displaySubtext = context.explanation
             )
         } else {
@@ -96,7 +104,14 @@ class FoodPersonalizationEngine(
             val defaultNutrition = if (seedFood != null) {
                 NutritionCalculator.calculateBaseline(seedFood, defaultGrams)
             } else {
-                generateFallbackNutrition(defaultGrams)
+                // Do not fabricate calories when uncatalogued
+                NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, defaultGrams)
+            }
+
+            val explanation = if (seedFood != null) {
+                "Standard estimate (~${defaultGrams.toInt()}g). Confirm food and portion to personalize."
+            } else {
+                "Food recognized, but nutrition data is unavailable."
             }
 
             val context = PersonalizedFoodContext(
@@ -104,7 +119,7 @@ class FoodPersonalizationEngine(
                 foodName = foodName,
                 hasHistory = false,
                 typicalPortionGrams = defaultGrams,
-                explanation = "First scan of $foodName: using standard ~${defaultGrams.toInt()}g portion. Confirm or adjust to personalize."
+                explanation = explanation
             )
 
             return PersonalizedNutritionResult(
@@ -112,7 +127,7 @@ class FoodPersonalizationEngine(
                 context = context,
                 nutrition = defaultNutrition,
                 isPersonalized = false,
-                displayHeading = "$foodName — Standard estimate",
+                displayHeading = if (seedFood != null) "$foodName — Standard estimate" else "$foodName — Uncatalogued",
                 displaySubtext = context.explanation
             )
         }
@@ -199,27 +214,14 @@ class FoodPersonalizationEngine(
         recurrence: Int
     ): String {
         val details = mutableListOf<String>()
-        details.add("Your typical ~${portion.toInt()}g")
+        details.add("Your usual portion: ~${portion.toInt()}g")
         if (!cookingMethod.isNullOrBlank()) {
             details.add(cookingMethod)
         }
         if (!oilLevel.isNullOrBlank()) {
             details.add("$oilLevel oil")
         }
-        val detailStr = details.joinToString(", ")
-        return "Learned from $recurrence scan(s): $detailStr"
-    }
-
-    private fun generateFallbackNutrition(grams: Double): NutritionProfile {
-        val factor = grams / 100.0
-        return NutritionProfile(
-            calories = 150.0 * factor,
-            protein = 5.0 * factor,
-            carbohydrates = 20.0 * factor,
-            fat = 5.0 * factor,
-            fiber = 2.0 * factor,
-            servingGrams = grams
-        )
+        return details.joinToString(" • ")
     }
 
     private fun serializeJsonMap(map: Map<String, Double>): String {

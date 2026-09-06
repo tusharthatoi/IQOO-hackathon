@@ -106,39 +106,50 @@ class CameraOverlayView @JvmOverloads constructor(
         }
     }
 
+    private val reticlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 7f
+        strokeCap = Paint.Cap.ROUND
+    }
+
     private fun drawFoodOverlay(canvas: Canvas) {
-        val result = foodResult ?: return
+        drawScanningReticle(canvas)
+    }
+
+    private fun drawScanningReticle(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
 
-        // 1. Food Bounding Box
-        val box = result.foodItem.boundingBox
-        if (box != null) {
-            val rect = RectF(box.left * w, box.top * h, box.right * w, box.bottom * h)
-            canvas.drawRoundRect(rect, 24f, 24f, boundingBoxPaint)
-        }
+        // Square reticle in center
+        val boxSize = minOf(w, h) * 0.72f
+        val left = (w - boxSize) / 2f
+        val top = (h - boxSize) / 2f + 20f
+        val right = left + boxSize
+        val bottom = top + boxSize
+        val cornerLen = 48f
+        val cornerRadius = 24f
 
-        // 2. Floating Card with Personalized Nutrition
-        val cardLeft = 40f
-        val cardTop = h - 420f
-        val cardRight = w - 40f
-        val cardBottom = h - 80f
-        val cardRect = RectF(cardLeft, cardTop, cardRight, cardBottom)
-        canvas.drawRoundRect(cardRect, 32f, 32f, cardBackgroundPaint)
+        // Draw 4 corner brackets
+        // Top-left
+        canvas.drawLine(left + cornerRadius, top, left + cornerLen, top, reticlePaint)
+        canvas.drawLine(left, top + cornerRadius, left, top + cornerLen, reticlePaint)
+        canvas.drawArc(RectF(left, top, left + cornerRadius * 2, top + cornerRadius * 2), 180f, 90f, false, reticlePaint)
 
-        // Card Header
-        canvas.drawText(result.displayHeading, cardLeft + 36f, cardTop + 65f, textHeaderPaint)
+        // Top-right
+        canvas.drawLine(right - cornerLen, top, right - cornerRadius, top, reticlePaint)
+        canvas.drawLine(right, top + cornerRadius, right, top + cornerLen, reticlePaint)
+        canvas.drawArc(RectF(right - cornerRadius * 2, top, right, top + cornerRadius * 2), 270f, 90f, false, reticlePaint)
 
-        // Subtext / Explanation (Personalized Context)
-        canvas.drawText(result.displaySubtext, cardLeft + 36f, cardTop + 120f, textSubPaint)
+        // Bottom-left
+        canvas.drawLine(left + cornerRadius, bottom, left + cornerLen, bottom, reticlePaint)
+        canvas.drawLine(left, bottom - cornerLen, left, bottom - cornerRadius, reticlePaint)
+        canvas.drawArc(RectF(left, bottom - cornerRadius * 2, left + cornerRadius * 2, bottom), 90f, 90f, false, reticlePaint)
 
-        // Macronutrients Row
-        val n = result.nutrition
-        val macroText = "${n.calories.toInt()} kcal  •  ${n.protein}g Protein  •  ${n.carbohydrates}g Carbs  •  ${n.fat}g Fat"
-        canvas.drawText(macroText, cardLeft + 36f, cardTop + 190f, accentTextPaint)
-
-        val confirmHint = "Tap to confirm portion or adjust preparation details"
-        canvas.drawText(confirmHint, cardLeft + 36f, cardTop + 260f, textSubPaint)
+        // Bottom-right
+        canvas.drawLine(right - cornerLen, bottom, right - cornerRadius, bottom, reticlePaint)
+        canvas.drawLine(right, bottom - cornerLen, right, bottom - cornerRadius, reticlePaint)
+        canvas.drawArc(RectF(right - cornerRadius * 2, bottom - cornerRadius * 2, right, bottom), 0f, 90f, false, reticlePaint)
     }
 
     private fun drawPostureOverlay(canvas: Canvas) {
