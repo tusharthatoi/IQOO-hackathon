@@ -1,0 +1,64 @@
+{
+    "package_name": "unified_8_exercise_android",
+    "version": "1.0",
+    "model_format": "ONNX",
+    "runtime": "ONNX Runtime",
+    "pose_input": "33 landmarks \u00d7 4 values",
+    "landmark_values": [
+        "x",
+        "y",
+        "z",
+        "visibility"
+    ],
+    "total_exercises": 8,
+    "original_exercises": [
+        "Jumping Jacks",
+        "Pull ups",
+        "Push Ups",
+        "Russian twists",
+        "Squats"
+    ],
+    "wlu_exercises": [
+        "Arm Raise",
+        "Knee Extension",
+        "Sit To Stand"
+    ],
+    "all_exercises": [
+        "Jumping Jacks",
+        "Pull ups",
+        "Push Ups",
+        "Russian twists",
+        "Squats",
+        "Arm Raise",
+        "Knee Extension",
+        "Sit To Stand"
+    ],
+    "models": {
+        "original_5_exercises": {
+            "file": "original_5_exercises.onnx",
+            "features": 10
+        },
+        "wlu_exercise": {
+            "file": "wlu_exercise.onnx",
+            "features": 132
+        },
+        "wlu_posture": {
+            "file": "wlu_posture.onnx",
+            "features": 132
+        }
+    },
+    "pipeline": {
+        "step_1": "Camera",
+        "step_2": "MediaPipe Pose",
+        "step_3": "33 pose landmarks",
+        "step_4": "Exercise classification",
+        "step_5": "Posture classification",
+        "step_6": "Correct / Incorrect"
+    },
+    "notes": [
+        "Models were not retrained.",
+        "Existing RandomForest models preserved.",
+        "ONNX Runtime graph optimization applied.",
+        "Original source models remain unchanged."
+    ]
+}

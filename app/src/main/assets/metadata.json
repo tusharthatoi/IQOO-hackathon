@@ -1,0 +1,48 @@
+{
+    "format": "ONNX",
+    "exercises": [
+        "Jumping Jacks",
+        "Pull ups",
+        "Push Ups",
+        "Russian twists",
+        "Squats",
+        "Arm Raise",
+        "Knee Extension",
+        "Sit To Stand"
+    ],
+    "original_model": {
+        "file": "original_5_exercises.onnx",
+        "features": 10,
+        "classes": [
+            "Jumping Jacks",
+            "Pull ups",
+            "Push Ups",
+            "Russian twists",
+            "Squats"
+        ]
+    },
+    "wlu_exercise_model": {
+        "file": "wlu_exercise.onnx",
+        "features": 132,
+        "classes": [
+            "Arm Raise",
+            "Knee Extension",
+            "Sit To Stand"
+        ]
+    },
+    "wlu_posture_model": {
+        "file": "wlu_posture.onnx",
+        "features": 132,
+        "classes": [
+            "Incorrect",
+            "Correct"
+        ]
+    },
+    "pipeline": [
+        "Camera",
+        "MediaPipe Pose",
+        "Landmark extraction",
+        "Original 5 / WLU 3 exercise classification",
+        "WLU posture classification"
+    ]
+}

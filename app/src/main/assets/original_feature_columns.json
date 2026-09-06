@@ -1,0 +1,12 @@
+[
+    "Shoulder_Angle",
+    "Elbow_Angle",
+    "Hip_Angle",
+    "Knee_Angle",
+    "Ankle_Angle",
+    "Shoulder_Ground_Angle",
+    "Elbow_Ground_Angle",
+    "Hip_Ground_Angle",
+    "Knee_Ground_Angle",
+    "Ankle_Ground_Angle"
+]
