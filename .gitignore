@@ -6,3 +6,4 @@ local.properties
 *.iml
 .externalNativeBuild/
 .cxx/
+FOLDER_ARCHITECTURE.txT 
