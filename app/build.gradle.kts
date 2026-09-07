@@ -36,8 +36,10 @@ android {
         jvmTarget = "17"
     }
 
-    aaptOptions {
-        noCompress("tflite")
+    // Do not compress ML model assets — attempting to deflate large binary files
+    // (56 MB ONNX, 24 MB ONNX, 33 MB TFLite) previously stalled APK packaging for ~20 min.
+    androidResources {
+        noCompress += listOf("tflite", "onnx", "lite")
     }
 
     buildFeatures {

@@ -27,6 +27,10 @@ interface WellnessEngine {
 
     suspend fun analyzeFood(bitmap: Bitmap): PersonalizedNutritionResult? = analyzeFood(null)
 
+    fun resetFoodScanning()
+
+    fun resetPoseState()
+
     suspend fun confirmFoodPortion(
         foodId: String,
         foodName: String,

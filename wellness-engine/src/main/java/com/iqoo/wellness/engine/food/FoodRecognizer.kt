@@ -9,6 +9,8 @@ import android.graphics.Bitmap
 interface FoodRecognizer {
     suspend fun recognizeFood(imageData: ByteArray? = null): List<RecognizedFoodItem>
     suspend fun recognizeFood(bitmap: Bitmap): List<RecognizedFoodItem> = recognizeFood(null)
+
+    fun reset() = Unit
 }
 
 /**

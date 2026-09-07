@@ -72,6 +72,7 @@ class WellnessEngineImpl(
     }
 
     override suspend fun analyzeFood(bitmap: Bitmap): PersonalizedNutritionResult? = withContext(Dispatchers.Default) {
+        android.util.Log.d("FOOD_SCAN", "analyzeFood bitmapId=${System.identityHashCode(bitmap)} size=${bitmap.width}x${bitmap.height}")
         val recognizedDishes = foodRecognizer.recognizeFood(bitmap)
         processRecognizedDishes(recognizedDishes)
     }
@@ -79,6 +80,16 @@ class WellnessEngineImpl(
     override suspend fun analyzeFood(frameData: ByteArray?): PersonalizedNutritionResult? = withContext(Dispatchers.Default) {
         val recognizedDishes = foodRecognizer.recognizeFood(frameData)
         processRecognizedDishes(recognizedDishes)
+    }
+
+    override fun resetFoodScanning() {
+        foodRecognizer.reset()
+        android.util.Log.i("IQOO_WELLNESS", "[FOOD_SCAN] Engine reset completed")
+    }
+
+    override fun resetPoseState() {
+        poseDetector.reset()
+        android.util.Log.i("POSTURE", "Engine pose state reset")
     }
 
     private suspend fun processRecognizedDishes(recognizedDishes: List<RecognizedFoodItem>): PersonalizedNutritionResult? {
@@ -291,7 +302,9 @@ class WellnessEngineImpl(
         exerciseType: ExerciseType
     ): PostureFeedback? = withContext(Dispatchers.Default) {
         if (poseDetector is ONNXExercisePoseDetector) {
-            poseDetector.processFrame(bitmap, exerciseType)
+            val feedback = poseDetector.processFrame(bitmap, exerciseType)
+            android.util.Log.i("POSTURE_TRACE", "engine confidence=${feedback.confidence} status=${feedback.poseStatus} activity=${feedback.detectedActivity}")
+            feedback
         } else {
             analyzePose(null, exerciseType)
         }

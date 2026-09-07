@@ -32,9 +32,20 @@ class TemporalStabilityTracker(
     }
 
     private val history = mutableListOf<FramePrediction>()
+    private var generation = 0L
 
     @Synchronized
-    fun addPrediction(prediction: FramePrediction): StabilityEvaluation {
+    fun addPrediction(prediction: FramePrediction, expectedGeneration: Long = generation): StabilityEvaluation {
+        if (expectedGeneration != generation) {
+            return StabilityEvaluation(
+                isStable = false,
+                dominantDishId = null,
+                dominantDishName = null,
+                dominantConfidence = 0f,
+                resolvedState = FoodResultState.SCANNING,
+                summary = "Scanning food..."
+            )
+        }
         val now = SystemClock.uptimeMillis()
         history.add(prediction)
 
@@ -77,12 +88,12 @@ class TemporalStabilityTracker(
         val resolvedState: FoodResultState
         val summary: String
 
-        if (prediction.gateDecision == GateDecision.LOW_CONFIDENCE && avgDominantConf < 0.15f) {
-            resolvedState = FoodResultState.LOW_CONFIDENCE
-            summary = "Hold steady and point the camera at a food item."
-        } else if (prediction.gateDecision == GateDecision.NOT_FOOD && avgDominantConf < 0.20f) {
+        if (prediction.gateDecision == GateDecision.NOT_FOOD) {
             resolvedState = FoodResultState.NOT_FOOD
             summary = "This doesn't look like a food item."
+        } else if (prediction.gateDecision == GateDecision.LOW_CONFIDENCE) {
+            resolvedState = FoodResultState.LOW_CONFIDENCE
+            summary = "Hold steady and point the camera at a food item."
         } else if (hasAdequateConfidence) {
             resolvedState = FoodResultState.FOOD_DETECTED
             summary = "Food confirmed stable across frames."
@@ -105,6 +116,10 @@ class TemporalStabilityTracker(
 
     @Synchronized
     fun reset() {
+        generation++
         history.clear()
     }
+
+    @Synchronized
+    fun currentGeneration(): Long = generation
 }
