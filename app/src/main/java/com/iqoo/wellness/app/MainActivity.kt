@@ -1,6 +1,7 @@
 package com.iqoo.wellness.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -33,7 +34,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraOverlay: CameraOverlayView
 
     // Top Header & Mode Selectors
+    private lateinit var topHeaderBar: LinearLayout
     private lateinit var txtHeaderSubtitle: TextView
+    private lateinit var btnProfile: ImageView
     private lateinit var btnAuto: TextView
     private lateinit var btnFood: TextView
     private lateinit var btnPosture: TextView
@@ -64,6 +67,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var containerConfirmedAction: LinearLayout
     private lateinit var btnScanNext: TextView
+    private lateinit var btnViewDashboard: TextView
 
     // Bottom Controls
     private lateinit var txtBottomHint: TextView
@@ -124,7 +128,9 @@ class MainActivity : AppCompatActivity() {
         previewView = findViewById(R.id.previewView)
         cameraOverlay = findViewById(R.id.cameraOverlay)
 
+        topHeaderBar = findViewById(R.id.topHeaderBar)
         txtHeaderSubtitle = findViewById(R.id.txtHeaderSubtitle)
+        btnProfile = findViewById(R.id.btnProfile)
         btnAuto = findViewById(R.id.btnAuto)
         btnFood = findViewById(R.id.btnFood)
         btnPosture = findViewById(R.id.btnPosture)
@@ -154,12 +160,21 @@ class MainActivity : AppCompatActivity() {
 
         containerConfirmedAction = findViewById(R.id.containerConfirmedAction)
         btnScanNext = findViewById(R.id.btnScanNext)
+        btnViewDashboard = findViewById(R.id.btnViewDashboard)
 
         txtBottomHint = findViewById(R.id.txtBottomHint)
         txtBottomSubhint = findViewById(R.id.txtBottomSubhint)
     }
 
     private fun setupUI() {
+        topHeaderBar.setOnClickListener {
+            openDashboard()
+        }
+
+        btnProfile.setOnClickListener {
+            openDashboard()
+        }
+
         btnAuto.setOnClickListener {
             switchMode(SceneType.NORMAL)
         }
@@ -237,6 +252,14 @@ class MainActivity : AppCompatActivity() {
         btnScanNext.setOnClickListener {
             resetFoodScanning()
         }
+
+        btnViewDashboard.setOnClickListener {
+            openDashboard()
+        }
+    }
+
+    private fun openDashboard() {
+        startActivity(Intent(this, DashboardActivity::class.java))
     }
 
     private fun confirmMeal() {
@@ -309,9 +332,10 @@ class MainActivity : AppCompatActivity() {
         if (result.isPersonalized && result.context.hasHistory) {
             // Case A: User has history -> Suggest usual portion
             txtPortionPrompt.text = "Your usual portion: ~${defaultGrams.toInt()}g (Based on previous meals)"
-            presetSmallGrams = ((defaultGrams - 25.0).coerceAtLeast(25.0) / 5.0).toInt() * 5.0
-            presetMediumGrams = (defaultGrams / 5.0).toInt() * 5.0
-            presetLargeGrams = ((defaultGrams + 25.0) / 5.0).toInt() * 5.0
+            val usualRounded = (defaultGrams / 5.0).toInt() * 5.0
+            presetSmallGrams = ((usualRounded - 25.0).coerceAtLeast(25.0) / 5.0).toInt() * 5.0
+            presetMediumGrams = usualRounded
+            presetLargeGrams = ((usualRounded + 25.0) / 5.0).toInt() * 5.0
 
             btnPresetSmall.text = "${presetSmallGrams.toInt()}g"
             btnPresetMedium.text = "${presetMediumGrams.toInt()}g (Usual)"

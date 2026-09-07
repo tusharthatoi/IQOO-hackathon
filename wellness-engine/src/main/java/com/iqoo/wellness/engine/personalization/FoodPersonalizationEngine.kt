@@ -32,7 +32,7 @@ class FoodPersonalizationEngine(
         val foodId = foodItem.foodId
         val foodName = foodItem.name
 
-        val avgPortion = portionHistoryDao.getAverageRecentPortion(foodId)
+        val avgPortion = portionHistoryDao.getAverageRecentPortion(foodId, foodName)
         val prepContext = preparationContextDao.getLatestContextForFood(foodId)
             ?: preparationContextDao.getLatestContextByFoodName(foodName)
 
@@ -73,6 +73,8 @@ class FoodPersonalizationEngine(
                 NutritionCalculator.unavailable(typicalGrams)
             }
 
+            println("[PERSONALIZATION_RAG] Retrieved portion for $foodName: $typicalGrams g (source: ${if (avgPortion != null) "portion_history" else "prep_context"}), cooking: ${prepContext?.cookingMethod ?: "baseline"}")
+
             return PersonalizedNutritionResult(
                 foodItem = foodItem,
                 context = context,
@@ -102,6 +104,8 @@ class FoodPersonalizationEngine(
                 typicalPortionGrams = defaultGrams,
                 explanation = explanation
             )
+
+            println("[PERSONALIZATION_RAG] No prior memory for $foodName. Falling back to baseline portion: $defaultGrams g")
 
             return PersonalizedNutritionResult(
                 foodItem = foodItem,
@@ -139,6 +143,7 @@ class FoodPersonalizationEngine(
         )
 
         val existing = preparationContextDao.getLatestContextForFood(foodId)
+            ?: preparationContextDao.getLatestContextByFoodName(foodName)
         val newRecurrence = (existing?.recurrenceCount ?: 0) + 1
 
         val contextEntity = FoodPreparationContextEntity(

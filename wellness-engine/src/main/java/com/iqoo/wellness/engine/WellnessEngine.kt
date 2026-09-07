@@ -10,6 +10,7 @@ import com.iqoo.wellness.engine.posture.PostureFeedback
 import com.iqoo.wellness.engine.scene.SceneType
 import com.iqoo.wellness.engine.storage.DailyNutritionSummary
 import com.iqoo.wellness.engine.storage.FoodHistoryEntity
+import com.iqoo.wellness.engine.storage.FoodMemoryRecord
 import com.iqoo.wellness.engine.storage.WellnessDatabase
 
 /**
@@ -76,6 +77,8 @@ interface WellnessEngine {
     suspend fun getDailyNutritionSummary(dateTimestamp: Long = System.currentTimeMillis()): DailyNutritionSummary
 
     suspend fun getTodayConfirmedMeals(dateTimestamp: Long = System.currentTimeMillis()): List<FoodHistoryEntity>
+
+    suspend fun getFoodMemory(): List<FoodMemoryRecord>
 
     suspend fun initializeOfflineData()
 }

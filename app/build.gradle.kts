@@ -50,6 +50,9 @@ android {
 dependencies {
     implementation(project(":wellness-engine"))
 
+    // Room runtime for entities & Room-derived data classes
+    implementation("androidx.room:room-runtime:2.6.1")
+
     // TensorFlow Lite
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
 

@@ -1,4 +1,4 @@
-﻿package com.iqoo.wellness.engine.posture
+package com.iqoo.wellness.engine.posture
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment

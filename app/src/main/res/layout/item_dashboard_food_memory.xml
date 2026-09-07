@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="10dp"
+    android:paddingHorizontal="4dp">
+
+    <TextView
+        android:id="@+id/txtMemoryIcon"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:gravity="center"
+        android:textSize="18sp"
+        android:text="🧠"
+        android:background="@drawable/bg_macro_card" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/txtMemoryFoodName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Biryani"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtMemorySubtext"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Based on your previous meals"
+            android:textColor="#78909C"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="end">
+
+        <TextView
+            android:id="@+id/txtMemoryUsualPortion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Usual: ~231g"
+            android:textColor="#2ECC71"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtMemoryCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="4 meals recorded"
+            android:textColor="#90A4AE"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+</LinearLayout>

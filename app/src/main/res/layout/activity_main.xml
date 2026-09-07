@@ -34,6 +34,8 @@
         android:gravity="center_vertical"
         android:paddingHorizontal="24dp"
         android:layout_marginTop="42dp"
+        android:clickable="true"
+        android:focusable="true"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -415,7 +417,8 @@
 
             <TextView
                 android:id="@+id/btnScanNext"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:paddingVertical="7dp"
@@ -423,6 +426,20 @@
                 android:textColor="#CFD8DC"
                 android:textSize="12sp"
                 android:background="@drawable/bg_btn_secondary" />
+
+            <TextView
+                android:id="@+id/btnViewDashboard"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:gravity="center"
+                android:paddingVertical="7dp"
+                android:text="View Diary &amp; Memory"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:background="@drawable/bg_btn_confirm" />
         </LinearLayout>
     </LinearLayout>
 

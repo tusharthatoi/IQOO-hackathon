@@ -28,6 +28,7 @@ import com.iqoo.wellness.engine.scene.SceneClassifier
 import com.iqoo.wellness.engine.scene.SceneType
 import com.iqoo.wellness.engine.storage.DailyNutritionSummary
 import com.iqoo.wellness.engine.storage.FoodHistoryEntity
+import com.iqoo.wellness.engine.storage.FoodMemoryRecord
 import com.iqoo.wellness.engine.storage.WellnessDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -213,6 +214,7 @@ class WellnessEngineImpl(
             userCorrections = userCorrections,
             calculatedNutrition = nutrition
         )
+        println("[MEAL_MEMORY] Confirmed meal saved: $foodName (${confirmedPortionGrams}g, ${nutrition.calories} kcal)")
         android.util.Log.i("IQOO_WELLNESS", "[MEAL_SAVE] Confirmed meal saved: $foodName (${confirmedPortionGrams}g, ${nutrition.calories} kcal)")
         Unit
     }
@@ -250,12 +252,20 @@ class WellnessEngineImpl(
 
     override suspend fun getDailyNutritionSummary(dateTimestamp: Long): DailyNutritionSummary = withContext(Dispatchers.IO) {
         val (startOfDay, endOfDay) = getDayRange(dateTimestamp)
-        database.foodHistoryDao().getDailyNutritionSummary(startOfDay, endOfDay)
+        val summary = database.foodHistoryDao().getDailyNutritionSummary(startOfDay, endOfDay)
+        println("[DAILY_NUTRITION] Today: ${summary.totalCalories} kcal, ${summary.totalProtein}g protein, ${summary.mealCount} meals")
+        summary
     }
 
     override suspend fun getTodayConfirmedMeals(dateTimestamp: Long): List<FoodHistoryEntity> = withContext(Dispatchers.IO) {
         val (startOfDay, endOfDay) = getDayRange(dateTimestamp)
         database.foodHistoryDao().getTodayConfirmedMeals(startOfDay, endOfDay)
+    }
+
+    override suspend fun getFoodMemory(): List<FoodMemoryRecord> = withContext(Dispatchers.IO) {
+        val records = database.foodHistoryDao().getFoodMemoryRecords()
+        println("[MEAL_MEMORY] Retrieved ${records.size} distinct food memory records")
+        records
     }
 
     private fun getDayRange(timestampMs: Long): Pair<Long, Long> {
@@ -267,11 +277,7 @@ class WellnessEngineImpl(
             set(Calendar.MILLISECOND, 0)
         }
         val startOfDay = cal.timeInMillis
-        cal.set(Calendar.HOUR_OF_DAY, 23)
-        cal.set(Calendar.MINUTE, 59)
-        cal.set(Calendar.SECOND, 59)
-        cal.set(Calendar.MILLISECOND, 999)
-        val endOfDay = cal.timeInMillis
+        val endOfDay = startOfDay + 86_400_000L
         return Pair(startOfDay, endOfDay)
     }
 

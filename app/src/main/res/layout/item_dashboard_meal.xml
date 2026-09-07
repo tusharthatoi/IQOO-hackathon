@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="10dp"
+    android:paddingHorizontal="4dp">
+
+    <TextView
+        android:id="@+id/txtMealIcon"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:gravity="center"
+        android:textSize="18sp"
+        android:text="🍛"
+        android:background="@drawable/bg_macro_card" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/txtMealName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Biryani"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtMealPortionAndMacros"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="231g • P: 17g • C: 55g • F: 10g"
+            android:textColor="#90A4AE"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="end">
+
+        <TextView
+            android:id="@+id/txtMealCalories"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="~381 kcal"
+            android:textColor="#00E5FF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtMealTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="12:42 PM"
+            android:textColor="#78909C"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+</LinearLayout>

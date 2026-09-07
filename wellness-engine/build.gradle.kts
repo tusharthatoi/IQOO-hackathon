@@ -58,9 +58,9 @@ dependencies {
     // Google ML Kit Pose Detection
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
 
-    // Room Database
+    // Room Database - expose api so consumers receive room-runtime
     val roomVersion = "2.6.1"
-    implementation("androidx.room:room-runtime:$roomVersion")
+    api("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
 
