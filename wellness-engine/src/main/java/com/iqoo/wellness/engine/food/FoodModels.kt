@@ -33,5 +33,6 @@ data class NutritionProfile(
     val carbohydrates: Double,
     val fat: Double,
     val fiber: Double,
-    val servingGrams: Double
+    val servingGrams: Double,
+    val isAvailable: Boolean = true
 )

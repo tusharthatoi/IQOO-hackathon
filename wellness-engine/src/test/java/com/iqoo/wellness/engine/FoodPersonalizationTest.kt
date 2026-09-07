@@ -70,7 +70,7 @@ class FoodPersonalizationTest {
         assertFalse("First scan must not be flagged as personalized", result.isPersonalized)
         assertFalse("First scan context must report hasHistory = false", result.context.hasHistory)
         assertEquals(250.0, result.context.typicalPortionGrams, 0.1) // Default serving from seed DB
-        assertTrue("Display subtext should mention standard estimate", result.displaySubtext.contains("Standard estimate", ignoreCase = true))
+        assertTrue("Display subtext should mention suggested serving or standard estimate", result.displaySubtext.contains("Suggested serving", ignoreCase = true) || result.displaySubtext.contains("Standard estimate", ignoreCase = true))
     }
 
     @Test

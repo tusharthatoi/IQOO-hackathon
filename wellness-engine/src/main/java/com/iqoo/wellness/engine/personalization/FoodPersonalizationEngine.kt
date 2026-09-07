@@ -10,24 +10,21 @@ import com.iqoo.wellness.engine.storage.FoodPreparationContextDao
 import com.iqoo.wellness.engine.storage.FoodPreparationContextEntity
 import com.iqoo.wellness.engine.storage.PortionHistoryDao
 import com.iqoo.wellness.engine.storage.PortionHistoryEntity
+import com.iqoo.wellness.engine.storage.WellnessDatabase
 import org.json.JSONObject
 
-/**
- * Local Structured Retrieval & Personalization Engine (Structured RAG).
- *
- * Implements the core pipeline:
- * Fixed Food Recognition Model -> Local User History Retrieval -> Personalized Context -> Nutrition Calculation Engine -> Personalized Estimate.
- */
 class FoodPersonalizationEngine(
     private val portionHistoryDao: PortionHistoryDao,
     private val preparationContextDao: FoodPreparationContextDao,
     private val foodHistoryDao: FoodHistoryDao
 ) {
 
-    /**
-     * Retrieves user history for the recognized food and computes the personalized nutrition result.
-     * If no history exists, returns a default estimate based on the seed food database.
-     */
+    constructor(database: WellnessDatabase) : this(
+        portionHistoryDao = database.portionHistoryDao(),
+        preparationContextDao = database.foodPreparationContextDao(),
+        foodHistoryDao = database.foodHistoryDao()
+    )
+
     suspend fun getPersonalizedNutrition(
         foodItem: RecognizedFoodItem,
         seedFood: FoodEntity?
@@ -35,42 +32,30 @@ class FoodPersonalizationEngine(
         val foodId = foodItem.foodId
         val foodName = foodItem.name
 
-        // 1. Structured Retrieval from SQLite/Room
+        val avgPortion = portionHistoryDao.getAverageRecentPortion(foodId)
         val prepContext = preparationContextDao.getLatestContextForFood(foodId)
             ?: preparationContextDao.getLatestContextByFoodName(foodName)
-        val avgPortion = portionHistoryDao.getAverageRecentPortion(foodId)
 
-        // 2. Determine if meaningful user history exists
-        if (prepContext != null || avgPortion != null) {
-            val typicalGrams = when {
-                avgPortion != null -> (Math.round(avgPortion * 10.0) / 10.0)
-                prepContext != null -> prepContext.typicalPortionGrams
-                seedFood != null -> seedFood.defaultGrams
-                else -> foodItem.estimatedAreaPortionGrams
-            }
+        val hasHistory = (avgPortion != null && avgPortion > 0.0) || prepContext != null
 
-            // Parse ingredients if stored
+        if (hasHistory) {
+            val typicalGrams = avgPortion ?: prepContext?.typicalPortionGrams ?: seedFood?.defaultGrams ?: foodItem.estimatedAreaPortionGrams
             val ingredientMap = parseJsonMap(prepContext?.ingredientQuantitiesJson)
             val substitutionsMap = parseJsonStringMap(prepContext?.substitutionsJson)
 
-            val explanation = if (seedFood != null) {
-                buildExplanation(
-                    foodName = foodName,
-                    portion = typicalGrams,
-                    cookingMethod = prepContext?.cookingMethod,
-                    oilLevel = prepContext?.oilFatLevel,
-                    recurrence = prepContext?.recurrenceCount ?: 1
-                )
-            } else {
-                "Food recognized, but nutrition data is unavailable."
-            }
+            val explanation = buildExplanation(
+                foodName = foodName,
+                portion = typicalGrams,
+                cookingMethod = prepContext?.cookingMethod,
+                oilLevel = prepContext?.oilFatLevel,
+                recurrence = prepContext?.recurrenceCount ?: 1
+            )
 
             val context = PersonalizedFoodContext(
                 foodId = foodId,
                 foodName = foodName,
                 hasHistory = true,
                 typicalPortionGrams = typicalGrams,
-                userConfirmedQuantity = prepContext?.userConfirmedQuantity,
                 ingredientQuantities = ingredientMap,
                 cookingMethod = prepContext?.cookingMethod,
                 oilFatLevel = prepContext?.oilFatLevel,
@@ -82,12 +67,10 @@ class FoodPersonalizationEngine(
                 explanation = explanation
             )
 
-            // 3. Compute personalized nutrition using retrieved context
             val nutrition = if (seedFood != null) {
                 NutritionCalculator.calculatePersonalized(seedFood, context)
             } else {
-                // Do not fabricate calories when uncatalogued
-                NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, typicalGrams)
+                NutritionCalculator.unavailable(typicalGrams)
             }
 
             return PersonalizedNutritionResult(
@@ -95,23 +78,21 @@ class FoodPersonalizationEngine(
                 context = context,
                 nutrition = nutrition,
                 isPersonalized = seedFood != null,
-                displayHeading = if (seedFood != null) "$foodName — Personalized estimate" else "$foodName — Uncatalogued",
+                displayHeading = if (seedFood != null) "$foodName" else "$foodName — Uncatalogued",
                 displaySubtext = context.explanation
             )
         } else {
-            // First encounter: No history found -> use seed defaults
             val defaultGrams = seedFood?.defaultGrams ?: foodItem.estimatedAreaPortionGrams
             val defaultNutrition = if (seedFood != null) {
                 NutritionCalculator.calculateBaseline(seedFood, defaultGrams)
             } else {
-                // Do not fabricate calories when uncatalogued
-                NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, defaultGrams)
+                NutritionCalculator.unavailable(defaultGrams)
             }
 
             val explanation = if (seedFood != null) {
-                "Standard estimate (~${defaultGrams.toInt()}g). Confirm food and portion to personalize."
+                "Suggested serving: ~${defaultGrams.toInt()}g (Standard estimate)"
             } else {
-                "Food recognized, but nutrition data is unavailable."
+                "Nutrition data unavailable for this food."
             }
 
             val context = PersonalizedFoodContext(
@@ -127,16 +108,12 @@ class FoodPersonalizationEngine(
                 context = context,
                 nutrition = defaultNutrition,
                 isPersonalized = false,
-                displayHeading = if (seedFood != null) "$foodName — Standard estimate" else "$foodName — Uncatalogued",
+                displayHeading = if (seedFood != null) "$foodName" else "$foodName — Uncatalogued",
                 displaySubtext = context.explanation
             )
         }
     }
 
-    /**
-     * Stores user confirmation or correction locally in SQLite/Room.
-     * Future scans retrieve this data immediately.
-     */
     suspend fun saveUserConfirmation(
         foodId: String,
         foodName: String,
@@ -150,17 +127,17 @@ class FoodPersonalizationEngine(
         userCorrections: String? = null,
         calculatedNutrition: NutritionProfile? = null
     ) {
-        // 1. Log to portion history table
+        val now = System.currentTimeMillis()
+
         portionHistoryDao.insertPortion(
             PortionHistoryEntity(
                 foodId = foodId,
                 foodName = foodName,
                 portionGrams = confirmedPortionGrams,
-                timestamp = System.currentTimeMillis()
+                timestamp = now
             )
         )
 
-        // 2. Query existing context to update recurrence count and rolling preferences
         val existing = preparationContextDao.getLatestContextForFood(foodId)
         val newRecurrence = (existing?.recurrenceCount ?: 0) + 1
 
@@ -182,13 +159,11 @@ class FoodPersonalizationEngine(
             lastProteinEstimate = calculatedNutrition?.protein,
             lastCarbsEstimate = calculatedNutrition?.carbohydrates,
             lastFatEstimate = calculatedNutrition?.fat,
-            timestamp = System.currentTimeMillis()
+            timestamp = now
         )
-
         preparationContextDao.insertContext(contextEntity)
 
-        // 3. Log to general food history log
-        if (calculatedNutrition != null) {
+        if (calculatedNutrition != null && calculatedNutrition.isAvailable) {
             foodHistoryDao.insertFoodHistory(
                 FoodHistoryEntity(
                     foodId = foodId,
@@ -200,7 +175,7 @@ class FoodPersonalizationEngine(
                     fat = calculatedNutrition.fat,
                     fiber = calculatedNutrition.fiber,
                     isUserConfirmed = true,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = now
                 )
             )
         }
@@ -221,6 +196,7 @@ class FoodPersonalizationEngine(
         if (!oilLevel.isNullOrBlank()) {
             details.add("$oilLevel oil")
         }
+        details.add("Based on your previous meals")
         return details.joinToString(" • ")
     }
 

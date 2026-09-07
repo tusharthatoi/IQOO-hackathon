@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import com.iqoo.wellness.engine.activity.ActivitySummary
 import com.iqoo.wellness.engine.activity.StepSensorTracker
 import com.iqoo.wellness.engine.food.FoodRecognizer
+import com.iqoo.wellness.engine.food.FoodResultState
 import com.iqoo.wellness.engine.food.FoodSeedDatabase
 import com.iqoo.wellness.engine.food.OnDeviceFoodRecognizer
 import com.iqoo.wellness.engine.food.RecognizedFoodItem
@@ -25,14 +26,13 @@ import com.iqoo.wellness.engine.posture.SquatStateMachine
 import com.iqoo.wellness.engine.scene.LightweightSceneClassifier
 import com.iqoo.wellness.engine.scene.SceneClassifier
 import com.iqoo.wellness.engine.scene.SceneType
+import com.iqoo.wellness.engine.storage.DailyNutritionSummary
+import com.iqoo.wellness.engine.storage.FoodHistoryEntity
 import com.iqoo.wellness.engine.storage.WellnessDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
-/**
- * Concrete implementation of the WellnessEngine coordinating vision,
- * structured retrieval, posture trigonometry, activity tracking, and Room persistence.
- */
 class WellnessEngineImpl(
     override val database: WellnessDatabase,
     private val foodRecognizer: FoodRecognizer = OnDeviceFoodRecognizer(),
@@ -47,7 +47,6 @@ class WellnessEngineImpl(
         foodHistoryDao = database.foodHistoryDao()
     )
 
-    // Cached state machines for the 5 supported exercises
     private val stateMachines: Map<ExerciseType, ExerciseStateMachine> = mapOf(
         ExerciseType.SQUAT to SquatStateMachine(),
         ExerciseType.PUSH_UP to PushUpStateMachine(),
@@ -60,8 +59,8 @@ class WellnessEngineImpl(
         val count = database.foodDao().getAllFoods().size
         if (count < FoodSeedDatabase.SEED_FOODS.size) {
             database.foodDao().insertAllFoods(FoodSeedDatabase.SEED_FOODS)
+            android.util.Log.d("IQOO_WELLNESS", "[DATABASE] Seeded ${FoodSeedDatabase.SEED_FOODS.size} Indian food items into Room database.")
         }
-        // Run rolling retention purge on start
         stepTracker?.enforceRetentionPolicy()
         Unit
     }
@@ -87,7 +86,7 @@ class WellnessEngineImpl(
         android.util.Log.d("IQOO_WELLNESS", "[FOOD_PIPELINE] Recognizer=${foodRecognizer.javaClass.simpleName}, recognized=${primaryDish.name} (id=${primaryDish.foodId}), state=${primaryDish.state}, confidence=${primaryDish.confidence}")
 
         when (primaryDish.state) {
-            com.iqoo.wellness.engine.food.FoodResultState.NOT_FOOD -> {
+            FoodResultState.NOT_FOOD -> {
                 return PersonalizedNutritionResult(
                     foodItem = primaryDish,
                     context = com.iqoo.wellness.engine.personalization.PersonalizedFoodContext(
@@ -97,52 +96,51 @@ class WellnessEngineImpl(
                         typicalPortionGrams = 0.0,
                         explanation = primaryDish.stateMessage.ifBlank { "This doesn't look like a food item. Try scanning a dish or meal." }
                     ),
-                    nutrition = com.iqoo.wellness.engine.food.NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                    nutrition = com.iqoo.wellness.engine.food.NutritionCalculator.unavailable(0.0),
                     isPersonalized = false,
                     displayHeading = "Not Food",
                     displaySubtext = primaryDish.stateMessage.ifBlank { "This doesn't look like a food item. Try scanning a dish or meal." }
                 )
             }
-            com.iqoo.wellness.engine.food.FoodResultState.LOW_CONFIDENCE -> {
+            FoodResultState.LOW_CONFIDENCE -> {
+                val displayName = if (primaryDish.name.isNotBlank() && primaryDish.name != "Unknown Food") "${primaryDish.name}?" else "Scanning food..."
                 return PersonalizedNutritionResult(
                     foodItem = primaryDish,
                     context = com.iqoo.wellness.engine.personalization.PersonalizedFoodContext(
-                        foodId = "unknown",
-                        foodName = "Unknown Food",
+                        foodId = primaryDish.foodId,
+                        foodName = primaryDish.name,
                         hasHistory = false,
                         typicalPortionGrams = 0.0,
-                        explanation = primaryDish.stateMessage.ifBlank { "Hold steady and point the camera at a food item." }
+                        explanation = "Hold steady"
                     ),
-                    nutrition = com.iqoo.wellness.engine.food.NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                    nutrition = com.iqoo.wellness.engine.food.NutritionCalculator.unavailable(0.0),
                     isPersonalized = false,
-                    displayHeading = "Unknown Food",
-                    displaySubtext = primaryDish.stateMessage.ifBlank { "Hold steady and point the camera at a food item." }
+                    displayHeading = displayName,
+                    displaySubtext = "Point camera directly at a dish or meal"
                 )
             }
-            com.iqoo.wellness.engine.food.FoodResultState.SCANNING -> {
+            FoodResultState.SCANNING -> {
                 return PersonalizedNutritionResult(
                     foodItem = primaryDish,
                     context = com.iqoo.wellness.engine.personalization.PersonalizedFoodContext(
-                        foodId = "scanning",
-                        foodName = "Scanning food...",
+                        foodId = primaryDish.foodId,
+                        foodName = primaryDish.name,
                         hasHistory = false,
                         typicalPortionGrams = 0.0,
                         explanation = "Scanning food..."
                     ),
-                    nutrition = com.iqoo.wellness.engine.food.NutritionProfile(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                    nutrition = com.iqoo.wellness.engine.food.NutritionCalculator.unavailable(0.0),
                     isPersonalized = false,
-                    displayHeading = "Scanning food...",
+                    displayHeading = "Scanning: ${primaryDish.name}",
                     displaySubtext = "Hold steady for best results"
                 )
             }
-            com.iqoo.wellness.engine.food.FoodResultState.FOOD_DETECTED -> {
-                // Query seed nutrition database for baseline per-100g data
+            FoodResultState.FOOD_DETECTED -> {
                 val seedFood = withContext(Dispatchers.IO) {
                     database.foodDao().getFoodById(primaryDish.foodId)
                         ?: database.foodDao().getFoodByName(primaryDish.name)
                 }
 
-                // Execute Structured RAG: Local history retrieval + Personalized nutrition calculation
                 return withContext(Dispatchers.IO) {
                     val result = personalizationEngine.getPersonalizedNutrition(
                         foodItem = primaryDish,
@@ -187,7 +185,9 @@ class WellnessEngineImpl(
 
         val nutrition = if (seedFood != null) {
             com.iqoo.wellness.engine.food.NutritionCalculator.calculatePersonalized(seedFood, tempContext)
-        } else null
+        } else {
+            com.iqoo.wellness.engine.food.NutritionCalculator.unavailable(confirmedPortionGrams)
+        }
 
         personalizationEngine.saveUserConfirmation(
             foodId = foodId,
@@ -202,6 +202,8 @@ class WellnessEngineImpl(
             userCorrections = userCorrections,
             calculatedNutrition = nutrition
         )
+        android.util.Log.i("IQOO_WELLNESS", "[MEAL_SAVE] Confirmed meal saved: $foodName (${confirmedPortionGrams}g, ${nutrition.calories} kcal)")
+        Unit
     }
 
     override suspend fun calculateNutritionForPortion(
@@ -211,7 +213,7 @@ class WellnessEngineImpl(
     ): com.iqoo.wellness.engine.food.NutritionProfile? = withContext(Dispatchers.IO) {
         val seedFood = database.foodDao().getFoodById(foodId)
             ?: database.foodDao().getFoodByName(foodName)
-            ?: return@withContext null
+            ?: return@withContext com.iqoo.wellness.engine.food.NutritionCalculator.unavailable(grams)
 
         val prepContext = database.foodPreparationContextDao().getLatestContextForFood(foodId)
             ?: database.foodPreparationContextDao().getLatestContextByFoodName(foodName)
@@ -233,6 +235,33 @@ class WellnessEngineImpl(
         } else {
             com.iqoo.wellness.engine.food.NutritionCalculator.calculateBaseline(seedFood, grams)
         }
+    }
+
+    override suspend fun getDailyNutritionSummary(dateTimestamp: Long): DailyNutritionSummary = withContext(Dispatchers.IO) {
+        val (startOfDay, endOfDay) = getDayRange(dateTimestamp)
+        database.foodHistoryDao().getDailyNutritionSummary(startOfDay, endOfDay)
+    }
+
+    override suspend fun getTodayConfirmedMeals(dateTimestamp: Long): List<FoodHistoryEntity> = withContext(Dispatchers.IO) {
+        val (startOfDay, endOfDay) = getDayRange(dateTimestamp)
+        database.foodHistoryDao().getTodayConfirmedMeals(startOfDay, endOfDay)
+    }
+
+    private fun getDayRange(timestampMs: Long): Pair<Long, Long> {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = timestampMs
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startOfDay = cal.timeInMillis
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999)
+        val endOfDay = cal.timeInMillis
+        return Pair(startOfDay, endOfDay)
     }
 
     override suspend fun getFoodEntity(foodIdOrName: String): com.iqoo.wellness.engine.storage.FoodEntity? = withContext(Dispatchers.IO) {

@@ -8,6 +8,8 @@ import com.iqoo.wellness.engine.personalization.PersonalizedNutritionResult
 import com.iqoo.wellness.engine.posture.ExerciseType
 import com.iqoo.wellness.engine.posture.PostureFeedback
 import com.iqoo.wellness.engine.scene.SceneType
+import com.iqoo.wellness.engine.storage.DailyNutritionSummary
+import com.iqoo.wellness.engine.storage.FoodHistoryEntity
 import com.iqoo.wellness.engine.storage.WellnessDatabase
 
 /**
@@ -19,27 +21,12 @@ interface WellnessEngine {
     val database: WellnessDatabase
     val personalizationEngine: FoodPersonalizationEngine
 
-    /**
-     * Executes lightweight cascaded scene classification (Food vs Exercise vs Normal).
-     * Prevents running heavy models continuously to preserve iQOO device thermals and battery.
-     */
     suspend fun analyzeScene(frameData: ByteArray? = null): SceneType
 
-    /**
-     * Executes the food intelligence pipeline:
-     * Vision Model -> Recognized Food -> Structured RAG Retrieval -> Nutrition Calculator -> Personalized Result
-     */
     suspend fun analyzeFood(frameData: ByteArray? = null): PersonalizedNutritionResult?
 
-    /**
-     * Executes food intelligence pipeline using a camera-derived Bitmap frame.
-     */
     suspend fun analyzeFood(bitmap: Bitmap): PersonalizedNutritionResult? = analyzeFood(null)
 
-    /**
-     * Confirms or corrects the recognized food portion, ingredient breakdown, and cooking method.
-     * Updates local Room/SQLite history for immediate personalization on subsequent scans.
-     */
     suspend fun confirmFoodPortion(
         foodId: String,
         foodName: String,
@@ -53,30 +40,16 @@ interface WellnessEngine {
         userCorrections: String? = null
     )
 
-    /**
-     * Deterministically calculates nutrition for a given portion without persisting to database.
-     * Used for real-time live preview while user adjusts portion controls.
-     */
     suspend fun calculateNutritionForPortion(
         foodId: String,
         foodName: String,
         grams: Double
     ): com.iqoo.wellness.engine.food.NutritionProfile?
 
-    /**
-     * Looks up food entity by ID or name.
-     */
     suspend fun getFoodEntity(foodIdOrName: String): com.iqoo.wellness.engine.storage.FoodEntity?
 
-    /**
-     * Retrieves all supported/seeded foods from local database.
-     */
     suspend fun getAllSupportedFoods(): List<com.iqoo.wellness.engine.storage.FoodEntity>
 
-    /**
-     * Executes the explainable exercise posture pipeline:
-     * Pose Model -> 17 Landmarks -> Joint Angle Trigonometry -> Exercise FSM -> Form Feedback
-     */
     suspend fun analyzePose(
         frameData: ByteArray? = null,
         exerciseType: ExerciseType = ExerciseType.SQUAT
@@ -96,8 +69,9 @@ interface WellnessEngine {
      */
     suspend fun getActivitySummary(): ActivitySummary
 
-    /**
-     * Seeds initial offline foods database if empty.
-     */
+    suspend fun getDailyNutritionSummary(dateTimestamp: Long = System.currentTimeMillis()): DailyNutritionSummary
+
+    suspend fun getTodayConfirmedMeals(dateTimestamp: Long = System.currentTimeMillis()): List<FoodHistoryEntity>
+
     suspend fun initializeOfflineData()
 }
