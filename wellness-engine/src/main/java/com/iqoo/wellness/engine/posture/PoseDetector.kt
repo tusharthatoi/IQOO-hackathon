@@ -6,6 +6,8 @@ package com.iqoo.wellness.engine.posture
  */
 interface PoseDetector {
     suspend fun detectPose(frameData: ByteArray? = null): List<BodyLandmark>
+
+    fun reset() = Unit
 }
 
 /**

@@ -12,6 +12,7 @@ import com.iqoo.wellness.engine.personalization.PersonalizedNutritionResult
 import com.iqoo.wellness.engine.posture.BodyLandmark
 import com.iqoo.wellness.engine.posture.LandmarkIndices
 import com.iqoo.wellness.engine.posture.PostureFeedback
+import com.iqoo.wellness.engine.posture.PoseStatus
 import com.iqoo.wellness.engine.scene.SceneType
 
 /**
@@ -74,6 +75,33 @@ class CameraOverlayView @JvmOverloads constructor(
         color = Color.parseColor("#00E5FF")
         textSize = 36f
         isFakeBoldText = true
+    }
+
+    private val cardTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 34f
+        isFakeBoldText = true
+    }
+
+    private val cardBodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 29f
+    }
+
+    private val cardMutedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#B0BEC5")
+        textSize = 24f
+    }
+
+    private val statusIconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 34f
+        isFakeBoldText = true
+    }
+
+    private val postureCardBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
     }
 
     fun setMode(mode: SceneType) {
@@ -153,41 +181,33 @@ class CameraOverlayView @JvmOverloads constructor(
     }
 
     private fun drawPostureOverlay(canvas: Canvas) {
-        val feedback = postureFeedback ?: return
         val w = width.toFloat()
         val h = height.toFloat()
-        val landmarks = feedback.landmarks
+        val feedback = postureFeedback
+        if (feedback != null && feedback.landmarks.isNotEmpty() && feedback.poseStatus != PoseStatus.NO_PERSON) {
+            drawSkeleton(canvas, feedback.landmarks, feedback.isFormCorrect, w, h)
+        }
+    }
 
-        if (landmarks.size >= 17) {
-            val paint = if (feedback.isFormCorrect) skeletonGoodPaint else skeletonWarningPaint
-
-            // Draw skeleton connections
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_SHOULDER, LandmarkIndices.RIGHT_SHOULDER, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_SHOULDER, LandmarkIndices.LEFT_ELBOW, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_ELBOW, LandmarkIndices.LEFT_WRIST, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.RIGHT_SHOULDER, LandmarkIndices.RIGHT_ELBOW, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.RIGHT_ELBOW, LandmarkIndices.RIGHT_WRIST, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_SHOULDER, LandmarkIndices.LEFT_HIP, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.RIGHT_SHOULDER, LandmarkIndices.RIGHT_HIP, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_HIP, LandmarkIndices.RIGHT_HIP, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_HIP, LandmarkIndices.LEFT_KNEE, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.LEFT_KNEE, LandmarkIndices.LEFT_ANKLE, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.RIGHT_HIP, LandmarkIndices.RIGHT_KNEE, paint, w, h)
-            drawBone(canvas, landmarks, LandmarkIndices.RIGHT_KNEE, LandmarkIndices.RIGHT_ANKLE, paint, w, h)
-
-            // Draw joint dots
-            for (lm in landmarks) {
-                canvas.drawCircle(lm.x * w, lm.y * h, 10f, jointPointPaint)
+    private fun drawSkeleton(canvas: Canvas, landmarks: List<BodyLandmark>, isCorrect: Boolean, w: Float, h: Float) {
+        val byId = landmarks.associateBy { it.id }
+        val paint = if (isCorrect) skeletonGoodPaint else skeletonWarningPaint
+        val connections = listOf(
+            0 to 1, 1 to 2, 2 to 3, 3 to 7, 0 to 4, 4 to 5, 5 to 6, 6 to 8,
+            9 to 10, 11 to 12, 11 to 13, 13 to 15, 12 to 14, 14 to 16,
+            11 to 23, 12 to 24, 23 to 24, 23 to 25, 25 to 27, 27 to 31,
+            24 to 26, 26 to 28, 28 to 32, 11 to 12
+        )
+        connections.forEach { (first, second) ->
+            val start = byId[first]
+            val end = byId[second]
+            if (start != null && end != null) {
+                canvas.drawLine(start.x * w, start.y * h, end.x * w, end.y * h, paint)
             }
         }
-
-        // Floating Rep & Form Card
-        val cardRect = RectF(40f, 120f, w - 40f, 320f)
-        canvas.drawRoundRect(cardRect, 28f, 28f, cardBackgroundPaint)
-
-        val repText = "${feedback.exerciseType.displayName}: Reps: ${feedback.repCount}  |  Angle: ${feedback.primaryAngleDegrees.toInt()}°"
-        canvas.drawText(repText, 70f, 185f, textHeaderPaint)
-        canvas.drawText(feedback.feedbackMessage, 70f, 255f, if (feedback.isFormCorrect) accentTextPaint else skeletonWarningPaint)
+        byId.values.forEach { lm ->
+            canvas.drawCircle(lm.x * w, lm.y * h, 8f, jointPointPaint)
+        }
     }
 
     private fun drawAutoCascadedOverlay(canvas: Canvas) {
@@ -205,9 +225,4 @@ class CameraOverlayView @JvmOverloads constructor(
         canvas.drawText("Steps: $steps  •  Burned: ${cal.toInt()} kcal (21-Day Local Storage)", 70f, h - 165f, accentTextPaint)
     }
 
-    private fun drawBone(canvas: Canvas, list: List<BodyLandmark>, idx1: Int, idx2: Int, paint: Paint, w: Float, h: Float) {
-        val p1 = list[idx1]
-        val p2 = list[idx2]
-        canvas.drawLine(p1.x * w, p1.y * h, p2.x * w, p2.y * h, paint)
-    }
 }

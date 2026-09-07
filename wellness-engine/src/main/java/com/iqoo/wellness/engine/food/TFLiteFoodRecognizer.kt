@@ -14,6 +14,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * On-device food classifier using the 10-class FP32 TensorFlow Lite model.
@@ -48,8 +50,17 @@ class TFLiteFoodRecognizer(
     private var outputBuffer = Array(1) { FloatArray(10) }
     private var intPixelValues = IntArray(300 * 300)
 
-    private val gate: FoodGate = HeuristicFoodGate(context)
+    private val gate: FoodGate = HeuristicFoodGate(context, foodConfidenceThreshold = confidenceThreshold)
     private val stabilityTracker = TemporalStabilityTracker()
+    private val inferenceLock = ReentrantLock()
+    private val scanGeneration = AtomicLong(0L)
+
+    override fun reset() {
+        scanGeneration.incrementAndGet()
+        stabilityTracker.reset()
+        gate.reset()
+        Log.i(TAG, "[FOOD_SCAN] TFLite recognizer state reset")
+    }
 
     init {
         loadLabels()
@@ -120,14 +131,14 @@ class TFLiteFoodRecognizer(
             order(ByteOrder.nativeOrder())
         }
         intPixelValues = IntArray(inputSize * inputSize)
-        Log.i(TAG, "[FOOD_TFLITE] Input tensor shape=${inputShape.contentToString()}, size=${inputSize}x${inputSize}")
+        Log.i(TAG, "[FOOD_RECOGNIZER] Input tensor shape=${inputShape.contentToString()}, type=${inputTensor.dataType()}, size=${inputSize}x${inputSize}")
 
         // 2. Output Tensor Configuration [1, 10] FLOAT32
         val outputTensor = currentInterpreter.getOutputTensor(0)
         val outputShape = outputTensor.shape()
         numOutputClasses = if (outputShape.size >= 2) outputShape[1] else outputShape[0]
         outputBuffer = Array(1) { FloatArray(numOutputClasses) }
-        Log.i(TAG, "[FOOD_TFLITE] Output tensor shape=${outputShape.contentToString()}, classes=$numOutputClasses")
+        Log.i(TAG, "[FOOD_RECOGNIZER] Output tensor shape=${outputShape.contentToString()}, type=${outputTensor.dataType()}, classes=$numOutputClasses")
     }
 
     override suspend fun recognizeFood(imageData: ByteArray?): List<RecognizedFoodItem> = withContext(Dispatchers.Default) {
@@ -135,13 +146,26 @@ class TFLiteFoodRecognizer(
     }
 
     override suspend fun recognizeFood(bitmap: Bitmap): List<RecognizedFoodItem> = withContext(Dispatchers.Default) {
+        if (!inferenceLock.tryLock()) {
+            Log.d(TAG, "[FOOD_SCAN] Skipping frame while previous inference is active")
+            return@withContext emptyList()
+        }
+        try {
+            recognizeFoodLocked(bitmap, scanGeneration.get())
+        } finally {
+            inferenceLock.unlock()
+        }
+    }
+
+    private fun recognizeFoodLocked(bitmap: Bitmap, expectedGeneration: Long): List<RecognizedFoodItem> {
         val currentInterpreter = interpreter
         if (currentInterpreter == null) {
             Log.e(TAG, "[FOOD_TFLITE] Interpreter is null. Model failed to load.")
-            return@withContext emptyList()
+            return emptyList()
         }
 
         val startTimeMs = SystemClock.uptimeMillis()
+        val trackerGeneration = stabilityTracker.currentGeneration()
         val preprocessedBitmap = prepareBitmap(bitmap)
 
         synchronized(inputBuffer) {
@@ -179,7 +203,10 @@ class TFLiteFoodRecognizer(
         val bestRawLabel = labels.getOrElse(bestIdx) { "unknown" }
         val bestDisplayName = formatFoodLabel(bestRawLabel)
 
-        Log.i(TAG, "[FOOD_TFLITE] Prediction: $bestDisplayName, Confidence: ${(bestConfidence * 100).toInt()}% (${inferenceTimeMs}ms)")
+        val topKSummary = topK.joinToString { (index, confidence) ->
+            "${labels.getOrElse(index) { "unknown" }}=${"%.4f".format(confidence)}"
+        }
+        Log.i(TAG, "[FOOD_RECOGNIZER] Prediction: $bestDisplayName, top3=[$topKSummary], margin=${"%.4f".format(bestConfidence - secondConfidence)}, inferenceMs=$inferenceTimeMs")
 
         val gateResult = gate.evaluate(
             bitmap = preprocessedBitmap,
@@ -187,6 +214,12 @@ class TFLiteFoodRecognizer(
             topConfidence = bestConfidence,
             secondConfidence = secondConfidence
         )
+        Log.i(TAG, "[FOOD_GATE] decision=${gateResult.decision}, confidence=${gateResult.confidence}, margin=${gateResult.margin}, explanation=${gateResult.explanation}")
+
+        if (expectedGeneration != scanGeneration.get()) {
+            Log.d(TAG, "[FOOD_SCAN] Discarding inference from stale generation=$expectedGeneration")
+            return emptyList()
+        }
 
         val stability = stabilityTracker.addPrediction(
             FramePrediction(
@@ -194,8 +227,10 @@ class TFLiteFoodRecognizer(
                 dishName = bestDisplayName,
                 confidence = bestConfidence,
                 gateDecision = gateResult.decision
-            )
+            ),
+            expectedGeneration = trackerGeneration
         )
+        Log.i(TAG, "[FOOD_TRACKER] state=${stability.resolvedState}, dominant=${stability.dominantDishName}, confidence=${stability.dominantConfidence}, stable=${stability.isStable}")
 
         val thumbnail = Bitmap.createScaledBitmap(preprocessedBitmap, 120, 120, true)
         val targetDishId = stability.dominantDishId ?: bestRawLabel
@@ -253,7 +288,7 @@ class TFLiteFoodRecognizer(
             }
         }
 
-        listOf(resultItem)
+        return listOf(resultItem)
     }
 
     private fun applySoftmaxIfNeeded(probabilities: FloatArray): FloatArray {

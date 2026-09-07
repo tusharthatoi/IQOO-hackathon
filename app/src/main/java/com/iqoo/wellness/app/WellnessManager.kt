@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Facade bridging camera frame delivery to the underlying WellnessEngine.
@@ -32,9 +33,21 @@ class WellnessManager(
     var onPostureAnalyzed: ((PostureFeedback?) -> Unit)? = null
 
     private var activeMode: SceneType = SceneType.NORMAL
+    private val foodScanGeneration = AtomicLong(0L)
+    var activeExerciseType: ExerciseType = ExerciseType.SQUAT
 
     fun setMode(mode: SceneType) {
+        if (activeMode != mode) {
+            engine.resetPoseState()
+            android.util.Log.i("CAMERA", "Mode changed $activeMode -> $mode; pose state reset")
+        }
         activeMode = mode
+    }
+
+    fun resetFoodScanning() {
+        foodScanGeneration.incrementAndGet()
+        engine.resetFoodScanning()
+        android.util.Log.i("FOOD_SCAN", "Food scan reset; CameraX remains active")
     }
 
     override fun onFrameAvailable(
@@ -50,16 +63,30 @@ class WellnessManager(
                 // Cascaded frame dispatching according to active mode
                 when (activeMode) {
                     SceneType.FOOD -> {
+                        val generation = foodScanGeneration.get()
+                        android.util.Log.d(
+                            "WELLNESS_MANAGER",
+                            "FOOD frame generation=$generation bitmapId=${bitmap?.let { System.identityHashCode(it) }} size=${width}x${height} rotation=$rotationDegrees"
+                        )
                         val result = if (bitmap != null) {
                             engine.analyzeFood(bitmap)
                         } else {
                             engine.analyzeFood()
                         }
-                        android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Food analysis output: ${result?.displayHeading}, calories=${result?.nutrition?.calories}")
-                        onFoodAnalyzed?.invoke(result)
+                        android.util.Log.d("WELLNESS_MANAGER", "FOOD result generation=$generation heading=${result?.displayHeading}")
+                        if (result != null && activeMode == SceneType.FOOD && generation == foodScanGeneration.get()) {
+                            onFoodAnalyzed?.invoke(result)
+                        } else {
+                            android.util.Log.d("FOOD_SCAN", "Skipped null or stale food result from generation=$generation")
+                        }
                     }
                     SceneType.EXERCISE -> {
-                        val feedback = engine.analyzePose()
+                        val feedback = if (bitmap != null) {
+                            engine.analyzePose(bitmap, activeExerciseType)
+                        } else {
+                            engine.analyzePose(null, activeExerciseType)
+                        }
+                        android.util.Log.i("POSTURE_TRACE", "manager confidence=${feedback?.confidence} status=${feedback?.poseStatus}")
                         android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Posture output: rep=${feedback?.repCount}, state=${feedback?.currentState}, angle=${feedback?.primaryAngleDegrees}")
                         onPostureAnalyzed?.invoke(feedback)
                     }

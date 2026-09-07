@@ -183,7 +183,9 @@ class MainActivity : AppCompatActivity() {
 
         wellnessManager.onPostureAnalyzed = { feedback ->
             runOnUiThread {
+                android.util.Log.i("POSTURE_TRACE", "activity confidence=${feedback?.confidence} status=${feedback?.poseStatus}")
                 cameraOverlay.updatePostureFeedback(feedback)
+                updatePostureResultCard(feedback)
             }
         }
 
@@ -367,18 +369,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resetFoodScanning() {
+        android.util.Log.i("FOOD_SCAN", "Change Food/reset pressed; clearing visible food state")
+        wellnessManager.resetFoodScanning()
+        cameraOverlay.updateFoodResult(null)
         currentFoodUIState = FoodUIState.SCANNING
         activeFoodResult = null
+        imgCropThumbnail.setImageDrawable(null)
         containerFoodConfirmation.visibility = View.GONE
         containerPortionSelection.visibility = View.GONE
         containerConfirmedAction.visibility = View.GONE
         txtResultMacros.visibility = View.GONE
         cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-        txtResultTitle.text = "Scanning food..."
+        txtResultTitle.text = "Scanning for food..."
         txtResultTitle.setTextColor(Color.parseColor("#90A4AE"))
         txtResultConfidence.text = ""
         iconState.setImageResource(R.drawable.ic_leaf)
-        txtResultSubtext.text = "Hold steady for best results"
+        txtResultSubtext.text = "Point the camera at a food item"
     }
 
     private fun updateResultCard(result: com.iqoo.wellness.engine.personalization.PersonalizedNutritionResult?) {
@@ -392,17 +398,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         val item = result.foodItem
+        android.util.Log.d("FOOD_SCAN", "UI result state=${item.state} name=${item.name} thumbnailId=${item.thumbnail?.let { System.identityHashCode(it) }}")
         item.thumbnail?.let { imgCropThumbnail.setImageBitmap(it) }
 
         when (item.state) {
             FoodResultState.NOT_FOOD -> {
                 cardResult.setBackgroundResource(R.drawable.bg_result_card_not_food)
-                txtResultTitle.text = "Not Food"
+                txtResultTitle.text = "No food detected"
                 txtResultTitle.setTextColor(Color.parseColor("#EF5350"))
                 txtResultConfidence.text = "${(item.confidence * 100).toInt()}%"
                 txtResultConfidence.setTextColor(Color.parseColor("#EF5350"))
                 iconState.setImageResource(R.drawable.ic_warning_circle)
-                txtResultSubtext.text = "This doesn't look like a food item.\nTry scanning a dish or meal."
+                txtResultSubtext.text = "Point the camera at a food item."
                 txtResultMacros.visibility = View.GONE
                 containerFoodConfirmation.visibility = View.GONE
                 containerPortionSelection.visibility = View.GONE
@@ -424,13 +431,13 @@ class MainActivity : AppCompatActivity() {
             }
             FoodResultState.SCANNING -> {
                 cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-                val displayName = if (item.name.isNotBlank() && item.name != "Scanning food...") "Scanning: ${item.name}" else "Scanning food..."
+                val displayName = "Scanning for food..."
                 txtResultTitle.text = displayName
                 txtResultTitle.setTextColor(Color.parseColor("#90A4AE"))
                 txtResultConfidence.text = if (item.confidence > 0f) "${(item.confidence * 100).toInt()}%" else ""
                 txtResultConfidence.setTextColor(Color.parseColor("#00E5FF"))
                 iconState.setImageResource(R.drawable.ic_leaf)
-                txtResultSubtext.text = "Analyzing camera stream..."
+                txtResultSubtext.text = "Point the camera at a food item"
                 txtResultMacros.visibility = View.GONE
                 containerFoodConfirmation.visibility = View.GONE
                 containerPortionSelection.visibility = View.GONE
@@ -455,13 +462,64 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updatePostureResultCard(feedback: com.iqoo.wellness.engine.posture.PostureFeedback?) {
+        containerFoodConfirmation.visibility = View.GONE
+        containerPortionSelection.visibility = View.GONE
+        containerConfirmedAction.visibility = View.GONE
+        txtResultMacros.visibility = View.GONE
+        imgCropThumbnail.setImageResource(R.drawable.ic_person)
+        imgCropThumbnail.setBackgroundColor(Color.parseColor("#263238"))
+        iconState.setImageResource(R.drawable.ic_person)
+
+        when {
+            feedback == null || feedback.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.NO_PERSON -> {
+                cardResult.setBackgroundResource(R.drawable.bg_result_card_not_food)
+                txtResultTitle.text = "No person detected"
+                txtResultConfidence.text = ""
+                txtResultSubtext.text = "Step into the camera frame."
+            }
+            feedback.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.INSUFFICIENT -> {
+                cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
+                txtResultTitle.text = "Pose not clear"
+                txtResultConfidence.text = ""
+                txtResultSubtext.text = "Make sure your full body is visible."
+            }
+            feedback.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.NO_EXERCISE -> {
+                cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
+                txtResultTitle.text = "No exercise detected"
+                txtResultConfidence.text = ""
+                txtResultSubtext.text = "Perform a supported exercise."
+            }
+            else -> {
+                cardResult.setBackgroundResource(
+                    if (feedback.isFormCorrect) R.drawable.bg_result_card_food else R.drawable.bg_result_card_not_food
+                )
+                txtResultTitle.text = feedback.detectedActivity
+                txtResultConfidence.text = "${(feedback.confidence * 100).toInt()}%"
+                txtResultConfidence.setTextColor(
+                    if (feedback.isFormCorrect) Color.parseColor("#2ECC71") else Color.parseColor("#EF5350")
+                )
+                val angle = if (feedback.primaryAngleDegrees in 0.1..180.0) " • ${feedback.primaryAngleDegrees.toInt()}°" else ""
+                val status = if (feedback.isFormCorrect) "✓ Correct Form" else "! Needs Correction"
+                txtResultSubtext.text = "$status • ${feedback.repCount} reps$angle\n${feedback.feedbackMessage}"
+                iconState.setImageResource(if (feedback.isFormCorrect) R.drawable.ic_leaf else R.drawable.ic_warning_circle)
+            }
+        }
+        txtResultTitle.setTextColor(if (feedback?.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.VALID) Color.WHITE else Color.parseColor("#EF5350"))
+        cardResult.visibility = View.VISIBLE
+    }
+
     private fun switchMode(mode: SceneType) {
         wellnessManager.setMode(mode)
         cameraOverlay.setMode(mode)
+        cameraOverlay.updatePostureFeedback(null)
 
-        if (mode != SceneType.FOOD) {
+        if (mode == SceneType.NORMAL) {
             resetFoodScanning()
             cardResult.visibility = View.GONE
+        } else if (mode == SceneType.EXERCISE) {
+            resetFoodScanning()
+            updatePostureResultCard(null)
         } else {
             cardResult.visibility = View.VISIBLE
             resetFoodScanning()

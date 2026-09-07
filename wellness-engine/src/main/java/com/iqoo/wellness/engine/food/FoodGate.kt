@@ -25,13 +25,15 @@ interface FoodGate {
         topConfidence: Float,
         secondConfidence: Float
     ): GateResult
+
+    fun reset() = Unit
 }
 
 class HeuristicFoodGate(
     private val context: Context? = null,
-    private val foodConfidenceThreshold: Float = 0.10f,
-    private val lowConfidenceThreshold: Float = 0.03f,
-    private val minMarginThreshold: Float = 0.01f
+    private val foodConfidenceThreshold: Float = 0.35f,
+    private val lowConfidenceThreshold: Float = 0.08f,
+    private val minMarginThreshold: Float = 0.08f
 ) : FoodGate {
 
     companion object {
@@ -58,7 +60,7 @@ class HeuristicFoodGate(
             )
         }
 
-        if (topConfidence < foodConfidenceThreshold && margin < minMarginThreshold) {
+        if (topConfidence < foodConfidenceThreshold || margin < minMarginThreshold) {
             return GateResult(
                 decision = GateDecision.NOT_FOOD,
                 confidence = topConfidence,
@@ -75,5 +77,9 @@ class HeuristicFoodGate(
             explanation = "Food detected with high confidence.",
             isTrainedBinaryModel = false
         )
+    }
+
+    override fun reset() {
+        Log.d(TAG, "[FOOD_GATE] Reset (heuristic gate has no retained state)")
     }
 }

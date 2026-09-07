@@ -34,7 +34,7 @@ android {
     }
 
     aaptOptions {
-        noCompress("tflite")
+        noCompress("tflite", "onnx", "json")
     }
 
     testOptions {
@@ -47,9 +47,16 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 
     // TensorFlow Lite
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
+
+    // ONNX Runtime for Android
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+
+    // Google ML Kit Pose Detection
+    implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
 
     // Room Database
     val roomVersion = "2.6.1"

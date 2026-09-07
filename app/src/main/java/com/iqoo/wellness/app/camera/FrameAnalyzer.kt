@@ -31,6 +31,7 @@ class FrameAnalyzer(
 
     private val minFrameIntervalMs = 1000L / targetFps
     private var lastAnalyzedTimestampMs = 0L
+    private var frameId = 0L
 
     override fun analyze(image: ImageProxy) {
         val currentTimestampMs = System.currentTimeMillis()
@@ -42,8 +43,9 @@ class FrameAnalyzer(
 
         try {
             lastAnalyzedTimestampMs = currentTimestampMs
+            frameId += 1
             val rotationDegrees = image.imageInfo.rotationDegrees
-            android.util.Log.d("IQOO_WELLNESS", "[CAMERA] Frame received: ${image.width}x${image.height}, rotation=$rotationDegrees")
+            android.util.Log.d("CAMERA", "[CAMERA] New frame id=$frameId timestamp=$currentTimestampMs size=${image.width}x${image.height}, rotation=$rotationDegrees")
             val planes = Array(image.planes.size) { i -> image.planes[i].buffer }
 
             val rawBitmap = image.toBitmap()

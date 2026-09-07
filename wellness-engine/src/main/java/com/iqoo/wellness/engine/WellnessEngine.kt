@@ -27,6 +27,10 @@ interface WellnessEngine {
 
     suspend fun analyzeFood(bitmap: Bitmap): PersonalizedNutritionResult? = analyzeFood(null)
 
+    fun resetFoodScanning()
+
+    fun resetPoseState()
+
     suspend fun confirmFoodPortion(
         foodId: String,
         foodName: String,
@@ -55,6 +59,18 @@ interface WellnessEngine {
         exerciseType: ExerciseType = ExerciseType.SQUAT
     ): PostureFeedback?
 
+    /**
+     * Executes exercise posture pipeline using a camera-derived Bitmap frame.
+     */
+    suspend fun analyzePose(
+        bitmap: Bitmap,
+        exerciseType: ExerciseType = ExerciseType.SQUAT
+    ): PostureFeedback? = analyzePose(null, exerciseType)
+
+    /**
+     * Retrieves daily physical activity summary (steps and calories burned).
+     * Enforces strict 21-day local SQLite retention policy.
+     */
     suspend fun getActivitySummary(): ActivitySummary
 
     suspend fun getDailyNutritionSummary(dateTimestamp: Long = System.currentTimeMillis()): DailyNutritionSummary
