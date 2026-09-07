@@ -226,6 +226,10 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             return if (lm != null) floatArrayOf(lm.position.x, lm.position.y) else floatArrayOf(0f, 0f)
         }
 
+        fun getVis(type: Int): Float {
+            return map[type]?.inFrameLikelihood ?: 0f
+        }
+
         // Left side
         val lSh = getPt(PoseLandmark.LEFT_SHOULDER)
         val lEl = getPt(PoseLandmark.LEFT_ELBOW)
@@ -234,6 +238,8 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         val lKn = getPt(PoseLandmark.LEFT_KNEE)
         val lAn = getPt(PoseLandmark.LEFT_ANKLE)
         val lFt = getPt(PoseLandmark.LEFT_FOOT_INDEX)
+        val lVis = (getVis(PoseLandmark.LEFT_SHOULDER) + getVis(PoseLandmark.LEFT_ELBOW) +
+                    getVis(PoseLandmark.LEFT_HIP) + getVis(PoseLandmark.LEFT_KNEE)) / 4.0f
 
         // Right side
         val rSh = getPt(PoseLandmark.RIGHT_SHOULDER)
@@ -243,6 +249,8 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         val rKn = getPt(PoseLandmark.RIGHT_KNEE)
         val rAn = getPt(PoseLandmark.RIGHT_ANKLE)
         val rFt = getPt(PoseLandmark.RIGHT_FOOT_INDEX)
+        val rVis = (getVis(PoseLandmark.RIGHT_SHOULDER) + getVis(PoseLandmark.RIGHT_ELBOW) +
+                    getVis(PoseLandmark.RIGHT_HIP) + getVis(PoseLandmark.RIGHT_KNEE)) / 4.0f
 
         fun computeSideAngles(sh: FloatArray, el: FloatArray, wr: FloatArray, hp: FloatArray, kn: FloatArray, an: FloatArray, ft: FloatArray): FloatArray {
             val shAng = angle3Pt(el, sh, hp).toFloat()
@@ -263,8 +271,11 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         val lAngles = computeSideAngles(lSh, lEl, lWr, lHp, lKn, lAn, lFt)
         val rAngles = computeSideAngles(rSh, rEl, rWr, rHp, rKn, rAn, rFt)
 
-        // Blend left and right angles
-        return FloatArray(10) { i -> (lAngles[i] + rAngles[i]) / 2.0f }
+        return when {
+            rVis > lVis + 0.1f -> rAngles
+            lVis > rVis + 0.1f -> lAngles
+            else -> FloatArray(10) { i -> (lAngles[i] + rAngles[i]) / 2.0f }
+        }
     }
 
     private fun extract132Features(landmarks: List<PoseLandmark>, imgW: Float, imgH: Float): FloatArray {
@@ -275,7 +286,7 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             if (lm != null) {
                 features[i * 4] = lm.position.x / imgW
                 features[i * 4 + 1] = lm.position.y / imgH
-                features[i * 4 + 2] = lm.position3D.z
+                features[i * 4 + 2] = lm.position3D.z / imgW
                 features[i * 4 + 3] = lm.inFrameLikelihood
             }
         }
