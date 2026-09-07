@@ -56,6 +56,9 @@ class WellnessEngineImpl(
         ExerciseType.SHOULDER_PRESS to ShoulderPressStateMachine()
     )
 
+    private var cachedNutritionKey: String? = null
+    private var cachedNutritionResult: PersonalizedNutritionResult? = null
+
     override suspend fun initializeOfflineData() = withContext(Dispatchers.IO) {
         val count = database.foodDao().getAllFoods().size
         if (count < FoodSeedDatabase.SEED_FOODS.size) {
@@ -85,6 +88,8 @@ class WellnessEngineImpl(
 
     override fun resetFoodScanning() {
         foodRecognizer.reset()
+        cachedNutritionKey = null
+        cachedNutritionResult = null
         android.util.Log.i("IQOO_WELLNESS", "[FOOD_SCAN] Engine reset completed")
     }
 
@@ -148,12 +153,17 @@ class WellnessEngineImpl(
                 )
             }
             FoodResultState.FOOD_DETECTED -> {
+                val cacheKey = "${primaryDish.foodId}|${primaryDish.name}"
+                if (cacheKey == cachedNutritionKey) {
+                    android.util.Log.d("FOOD_PIPELINE", "Reusing cached personalization for $cacheKey")
+                    return cachedNutritionResult
+                }
                 val seedFood = withContext(Dispatchers.IO) {
                     database.foodDao().getFoodById(primaryDish.foodId)
                         ?: database.foodDao().getFoodByName(primaryDish.name)
                 }
 
-                return withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     val result = personalizationEngine.getPersonalizedNutrition(
                         foodItem = primaryDish,
                         seedFood = seedFood
@@ -161,6 +171,9 @@ class WellnessEngineImpl(
                     android.util.Log.d("IQOO_WELLNESS", "[NUTRITION_ENGINE] Result for ${primaryDish.name}: ${result.nutrition.calories} kcal, personalized=${result.isPersonalized}, heading='${result.displayHeading}'")
                     result
                 }
+                cachedNutritionKey = cacheKey
+                cachedNutritionResult = result
+                return result
             }
         }
     }
@@ -177,6 +190,8 @@ class WellnessEngineImpl(
         substitutions: Map<String, String>,
         userCorrections: String?
     ) = withContext(Dispatchers.IO) {
+        cachedNutritionKey = null
+        cachedNutritionResult = null
         val seedFood = database.foodDao().getFoodById(foodId)
             ?: database.foodDao().getFoodByName(foodName)
 
@@ -310,6 +325,12 @@ class WellnessEngineImpl(
         if (poseDetector is ONNXExercisePoseDetector) {
             val feedback = poseDetector.processFrame(bitmap, exerciseType)
             android.util.Log.i("POSTURE_TRACE", "engine confidence=${feedback.confidence} status=${feedback.poseStatus} activity=${feedback.detectedActivity}")
+            android.util.Log.d(
+                "EXERCISE_CONFIDENCE_TRACE",
+                "detector=${feedback.exerciseConfidence} engine=${feedback.exerciseConfidence} " +
+                    "selectedExercise=${exerciseType.displayName} detectedExercise=${feedback.detectedActivity} " +
+                    "confidence=${feedback.exerciseConfidence}"
+            )
             feedback
         } else {
             analyzePose(null, exerciseType)

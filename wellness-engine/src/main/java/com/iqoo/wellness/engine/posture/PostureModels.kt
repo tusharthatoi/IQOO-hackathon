@@ -52,6 +52,7 @@ data class PostureFeedback(
     val feedbackMessage: String,
     val landmarks: List<BodyLandmark> = emptyList(),
     val confidence: Float = 0f,
+    val exerciseConfidence: Float = 0f,
     val detectedActivity: String = exerciseType.displayName,
     val poseStatus: PoseStatus = PoseStatus.VALID
 )

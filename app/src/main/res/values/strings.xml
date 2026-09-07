@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">iQOO Wellness</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_food">Food</string>
+    <string name="nav_exercise">Exercise</string>
+    <string name="nav_insights">Insights</string>
+    <string name="nav_profile">Profile</string>
+
+    <string name="good_morning">Good morning</string>
+    <string name="wellness_summary">Wellness Summary</string>
+    <string name="recent_activity">Recent Activity</string>
+
+    <string name="scan_again">Scan Again</string>
+    <string name="confirm_portion">Confirm Portion</string>
+
+    <string name="workout_complete">Workout Complete</string>
+    <string name="done">Done</string>
+    <string name="start_again">Start Again</string>
+</resources>

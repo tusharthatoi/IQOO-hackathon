@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/iqoo_black">
+
+    <androidx.camera.view.PreviewView
+        android:id="@+id/previewView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.iqoo.wellness.app.ui.CameraOverlayView
+        android:id="@+id/cameraOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Top Header -->
+    <TextView
+        android:id="@+id/txtAppHeader"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="@string/app_name"
+        android:textColor="@color/iqoo_text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Top Mode Selector -->
+    <LinearLayout
+        android:id="@+id/modePillBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="4dp"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_mode_bar_container"
+        app:layout_constraintTop_toBottomOf="@id/txtAppHeader"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/btnAuto"
+            android:layout_width="70dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingVertical="8dp"
+            android:text="Auto"
+            android:textColor="@color/iqoo_text_secondary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_mode_pill_inactive" />
+
+        <TextView
+            android:id="@+id/btnFood"
+            android:layout_width="70dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingVertical="8dp"
+            android:text="Food"
+            android:textColor="@color/iqoo_text_primary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_mode_pill_active" />
+
+        <TextView
+            android:id="@+id/btnPosture"
+            android:layout_width="70dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:paddingVertical="8dp"
+            android:text="Posture"
+            android:textColor="@color/iqoo_text_secondary"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_mode_pill_inactive" />
+    </LinearLayout>
+
+    <!-- Floating Result Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="@color/iqoo_translucent_surface"
+        app:cardCornerRadius="@dimen/card_corner_radius"
+        app:cardElevation="0dp"
+        app:layout_constraintTop_toBottomOf="@id/modePillBar">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/card_padding">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/imgCropThumbnail"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:scaleType="centerCrop"
+                    android:layout_marginEnd="12dp"
+                    android:background="@color/iqoo_surface"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Medium" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/txtResultTitle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="Scanning..."
+                            android:textColor="@color/iqoo_text_primary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/txtResultConfidence"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text=""
+                            android:textColor="@color/iqoo_green"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/txtResultMacros"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textColor="@color/iqoo_green"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Confirmation Buttons -->
+            <LinearLayout
+                android:id="@+id/containerFoodConfirmation"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/btnConfirmFood"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:paddingVertical="10dp"
+                    android:text="Confirm"
+                    android:textColor="@color/iqoo_text_primary"
+                    android:background="@drawable/bg_btn_confirm" />
+
+                <TextView
+                    android:id="@+id/btnChangeFood"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:layout_marginStart="8dp"
+                    android:paddingVertical="10dp"
+                    android:text="Rescan"
+                    android:textColor="@color/iqoo_text_secondary"
+                    android:background="@drawable/bg_btn_secondary" />
+            </LinearLayout>
+
+            <!-- Portion Selection -->
+            <LinearLayout
+                android:id="@+id/containerPortionSelection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/txtPortionGrams"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Portion: 250g"
+                    android:textColor="@color/iqoo_text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp">
+
+                    <TextView
+                        android:id="@+id/btnPresetSmall"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:paddingVertical="8dp"
+                        android:text="Small"
+                        android:textColor="@color/iqoo_text_primary"
+                        android:background="@drawable/bg_pill_preset_unselected" />
+
+                    <TextView
+                        android:id="@+id/btnPresetMedium"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:layout_marginStart="8dp"
+                        android:paddingVertical="8dp"
+                        android:text="Medium"
+                        android:textColor="@color/iqoo_text_primary"
+                        android:background="@drawable/bg_pill_preset_selected" />
+
+                    <TextView
+                        android:id="@+id/btnPresetLarge"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:layout_marginStart="8dp"
+                        android:paddingVertical="8dp"
+                        android:text="Large"
+                        android:textColor="@color/iqoo_text_primary"
+                        android:background="@drawable/bg_pill_preset_unselected" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/btnConfirmPortion"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:layout_marginTop="12dp"
+                    android:paddingVertical="10dp"
+                    android:text="@string/confirm_portion"
+                    android:textColor="@color/iqoo_text_primary"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_btn_confirm" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Bottom Hint Bar -->
+    <LinearLayout
+        android:id="@+id/bottomControlBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="24dp"
+        android:layout_marginHorizontal="20dp"
+        android:padding="12dp"
+        android:background="@drawable/bg_bottom_pill"
+        android:gravity="center"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <TextView
+            android:id="@+id/txtBottomHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Point camera at food"
+            android:textColor="@color/iqoo_text_primary"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

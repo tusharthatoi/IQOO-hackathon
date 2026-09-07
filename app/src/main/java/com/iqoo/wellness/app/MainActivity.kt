@@ -1,103 +1,31 @@
 package com.iqoo.wellness.app
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-import android.view.View
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import com.iqoo.wellness.app.camera.CameraManager
-import com.iqoo.wellness.app.ui.CameraOverlayView
-import com.iqoo.wellness.engine.food.FoodResultState
-import com.iqoo.wellness.engine.scene.SceneType
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import androidx.fragment.app.Fragment
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.iqoo.wellness.app.ui.ExerciseFragment
+import com.iqoo.wellness.app.ui.FoodFragment
+import com.iqoo.wellness.app.ui.HomeFragment
+import com.iqoo.wellness.app.ui.InsightsFragment
+import com.iqoo.wellness.app.ui.ProfileFragment
 
-/**
- * Camera Intelligence Viewport.
- * Projects real-time AI nutrition, exercise correction, and activity metrics onto the camera viewfinder.
- */
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var previewView: PreviewView
-    private lateinit var cameraOverlay: CameraOverlayView
-
-    // Top Header & Mode Selectors
-    private lateinit var topHeaderBar: LinearLayout
-    private lateinit var txtHeaderSubtitle: TextView
-    private lateinit var btnProfile: ImageView
-    private lateinit var btnAuto: TextView
-    private lateinit var btnFood: TextView
-    private lateinit var btnPosture: TextView
-
-    // Top Result Card Views
-    private lateinit var cardResult: LinearLayout
-    private lateinit var imgCropThumbnail: ImageView
-    private lateinit var txtResultTitle: TextView
-    private lateinit var txtResultConfidence: TextView
-    private lateinit var iconState: ImageView
-    private lateinit var txtResultSubtext: TextView
-    private lateinit var txtResultMacros: TextView
-
-    // Interactive Confirmation & Portion Selection Containers
-    private lateinit var containerFoodConfirmation: LinearLayout
-    private lateinit var btnConfirmFood: TextView
-    private lateinit var btnChangeFood: TextView
-
-    private lateinit var containerPortionSelection: LinearLayout
-    private lateinit var txtPortionPrompt: TextView
-    private lateinit var btnPresetSmall: TextView
-    private lateinit var btnPresetMedium: TextView
-    private lateinit var btnPresetLarge: TextView
-    private lateinit var txtPortionGrams: TextView
-    private lateinit var btnPortionMinus: TextView
-    private lateinit var btnPortionPlus: TextView
-    private lateinit var btnConfirmPortion: TextView
-
-    private lateinit var containerConfirmedAction: LinearLayout
-    private lateinit var btnScanNext: TextView
-    private lateinit var btnViewDashboard: TextView
-
-    // Bottom Controls
-    private lateinit var txtBottomHint: TextView
-    private lateinit var txtBottomSubhint: TextView
-
-    private lateinit var wellnessManager: WellnessManager
-    private var cameraManager: CameraManager? = null
-
-    enum class FoodUIState {
-        SCANNING,
-        FOOD_DETECTED,
-        PORTION_SELECTION,
-        PORTION_CONFIRMED
-    }
-
-    private var currentFoodUIState = FoodUIState.SCANNING
-    private var activeFoodResult: com.iqoo.wellness.engine.personalization.PersonalizedNutritionResult? = null
-    private var currentSelectedGrams: Double = 250.0
-    private var presetSmallGrams: Double = 125.0
-    private var presetMediumGrams: Double = 250.0
-    private var presetLargeGrams: Double = 375.0
-    private var isSavingMeal: Boolean = false
+    private lateinit var bottomNavigation: BottomNavigationView
+    val wellnessManager: WellnessManager by lazy { WellnessManager(applicationContext) }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
-        if (cameraGranted) {
-            setupCamera()
-        } else {
+        if (!cameraGranted) {
             Toast.makeText(this, "Camera permission is required for vision intelligence", Toast.LENGTH_LONG).show()
         }
     }
@@ -106,473 +34,42 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        bindViews()
-        wellnessManager = WellnessManager(this)
+        bottomNavigation = findViewById(R.id.bottom_navigation)
+        setupNavigation()
 
-        lifecycleScope.launch {
-            wellnessManager.engine.initializeOfflineData()
-            refreshDailyNutritionTotals()
-        }
+        checkPermissions()
 
-        setupUI()
-        setupFoodInteractionListeners()
-        checkPermissionsAndStart()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshDailyNutritionTotals()
-    }
-
-    private fun bindViews() {
-        previewView = findViewById(R.id.previewView)
-        cameraOverlay = findViewById(R.id.cameraOverlay)
-
-        topHeaderBar = findViewById(R.id.topHeaderBar)
-        txtHeaderSubtitle = findViewById(R.id.txtHeaderSubtitle)
-        btnProfile = findViewById(R.id.btnProfile)
-        btnAuto = findViewById(R.id.btnAuto)
-        btnFood = findViewById(R.id.btnFood)
-        btnPosture = findViewById(R.id.btnPosture)
-
-        cardResult = findViewById(R.id.cardResult)
-        imgCropThumbnail = findViewById(R.id.imgCropThumbnail)
-        txtResultTitle = findViewById(R.id.txtResultTitle)
-        txtResultConfidence = findViewById(R.id.txtResultConfidence)
-        iconState = findViewById(R.id.iconState)
-        txtResultSubtext = findViewById(R.id.txtResultSubtext)
-        txtResultMacros = findViewById(R.id.txtResultMacros)
-
-        // Interactive containers
-        containerFoodConfirmation = findViewById(R.id.containerFoodConfirmation)
-        btnConfirmFood = findViewById(R.id.btnConfirmFood)
-        btnChangeFood = findViewById(R.id.btnChangeFood)
-
-        containerPortionSelection = findViewById(R.id.containerPortionSelection)
-        txtPortionPrompt = findViewById(R.id.txtPortionPrompt)
-        btnPresetSmall = findViewById(R.id.btnPresetSmall)
-        btnPresetMedium = findViewById(R.id.btnPresetMedium)
-        btnPresetLarge = findViewById(R.id.btnPresetLarge)
-        txtPortionGrams = findViewById(R.id.txtPortionGrams)
-        btnPortionMinus = findViewById(R.id.btnPortionMinus)
-        btnPortionPlus = findViewById(R.id.btnPortionPlus)
-        btnConfirmPortion = findViewById(R.id.btnConfirmPortion)
-
-        containerConfirmedAction = findViewById(R.id.containerConfirmedAction)
-        btnScanNext = findViewById(R.id.btnScanNext)
-        btnViewDashboard = findViewById(R.id.btnViewDashboard)
-
-        txtBottomHint = findViewById(R.id.txtBottomHint)
-        txtBottomSubhint = findViewById(R.id.txtBottomSubhint)
-    }
-
-    private fun setupUI() {
-        topHeaderBar.setOnClickListener {
-            openDashboard()
-        }
-
-        btnProfile.setOnClickListener {
-            openDashboard()
-        }
-
-        btnAuto.setOnClickListener {
-            switchMode(SceneType.NORMAL)
-        }
-
-        btnFood.setOnClickListener {
-            switchMode(SceneType.FOOD)
-        }
-
-        btnPosture.setOnClickListener {
-            switchMode(SceneType.EXERCISE)
-        }
-
-        switchMode(SceneType.FOOD)
-
-        wellnessManager.onFoodAnalyzed = { result ->
-            runOnUiThread {
-                cameraOverlay.updateFoodResult(result)
-                updateResultCard(result)
-            }
-        }
-
-        wellnessManager.onPostureAnalyzed = { feedback ->
-            runOnUiThread {
-                android.util.Log.i("POSTURE_TRACE", "activity confidence=${feedback?.confidence} status=${feedback?.poseStatus}")
-                cameraOverlay.updatePostureFeedback(feedback)
-                updatePostureResultCard(feedback)
-            }
-        }
-
-        wellnessManager.onSceneDetected = { scene ->
-            runOnUiThread {
-                txtHeaderSubtitle.text = "Detected: ${scene.name} Scene"
-            }
+        if (savedInstanceState == null) {
+            replaceFragment(HomeFragment())
         }
     }
 
-    private fun setupFoodInteractionListeners() {
-        btnConfirmFood.setOnClickListener {
-            val result = activeFoodResult ?: return@setOnClickListener
-            currentFoodUIState = FoodUIState.PORTION_SELECTION
-            transitionToPortionSelection(result)
-        }
-
-        btnChangeFood.setOnClickListener {
-            // Discard rejected prediction without saving and resume live CameraX scanning
-            resetFoodScanning()
-        }
-
-        btnPresetSmall.setOnClickListener {
-            selectPreset(presetSmallGrams, btnPresetSmall)
-        }
-
-        btnPresetMedium.setOnClickListener {
-            selectPreset(presetMediumGrams, btnPresetMedium)
-        }
-
-        btnPresetLarge.setOnClickListener {
-            selectPreset(presetLargeGrams, btnPresetLarge)
-        }
-
-        btnPortionMinus.setOnClickListener {
-            currentSelectedGrams = (currentSelectedGrams - 25.0).coerceAtLeast(25.0)
-            updateStepperSelection()
-        }
-
-        btnPortionPlus.setOnClickListener {
-            currentSelectedGrams = (currentSelectedGrams + 25.0).coerceAtMost(1000.0)
-            updateStepperSelection()
-        }
-
-        btnConfirmPortion.setOnClickListener {
-            confirmMeal()
-        }
-
-        btnScanNext.setOnClickListener {
-            resetFoodScanning()
-        }
-
-        btnViewDashboard.setOnClickListener {
-            openDashboard()
+    private fun setupNavigation() {
+        bottomNavigation.setOnItemSelectedListener { item ->
+            val fragment = when (item.itemId) {
+                R.id.nav_home -> HomeFragment()
+                R.id.nav_food -> FoodFragment()
+                R.id.nav_exercise -> ExerciseFragment()
+                R.id.nav_insights -> InsightsFragment()
+                R.id.nav_profile -> ProfileFragment()
+                else -> HomeFragment()
+            }
+            replaceFragment(fragment)
+            true
         }
     }
 
-    private fun openDashboard() {
-        startActivity(Intent(this, DashboardActivity::class.java))
+    private fun replaceFragment(fragment: Fragment) {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.nav_host_fragment, fragment)
+            .commit()
     }
 
-    private fun confirmMeal() {
-        if (isSavingMeal) return
-        val result = activeFoodResult ?: return
-        isSavingMeal = true
-        btnConfirmPortion.isEnabled = false
-
-        val foodId = result.foodItem.foodId
-        val foodName = result.foodItem.name
-        val grams = currentSelectedGrams
-
-        lifecycleScope.launch {
-            try {
-                // Authoritative Save to Room: portion history + meal diary
-                wellnessManager.engine.confirmFoodPortion(
-                    foodId = foodId,
-                    foodName = foodName,
-                    confirmedPortionGrams = grams
-                )
-
-                // Refresh Daily Totals from Room (Source of Truth)
-                refreshDailyNutritionTotals()
-
-                withContext(Dispatchers.Main) {
-                    currentFoodUIState = FoodUIState.PORTION_CONFIRMED
-                    cardResult.setBackgroundResource(R.drawable.bg_result_card_food)
-                    txtResultTitle.text = "$foodName (${grams.toInt()}g)"
-                    txtResultTitle.setTextColor(Color.WHITE)
-                    txtResultConfidence.text = "✓ Confirmed"
-                    txtResultConfidence.setTextColor(Color.parseColor("#2ECC71"))
-                    iconState.setImageResource(R.drawable.ic_leaf)
-                    txtResultSubtext.text = if (result.isPersonalized) "Saved & updated your personalized food history" else "Saved to local wellness history"
-
-                    containerPortionSelection.visibility = View.GONE
-                    containerFoodConfirmation.visibility = View.GONE
-                    containerConfirmedAction.visibility = View.VISIBLE
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("IQOO_WELLNESS", "Error confirming meal: ${e.message}", e)
-            } finally {
-                isSavingMeal = false
-                btnConfirmPortion.isEnabled = true
-            }
-        }
+    fun openTab(itemId: Int) {
+        bottomNavigation.selectedItemId = itemId
     }
 
-    private fun refreshDailyNutritionTotals() {
-        lifecycleScope.launch {
-            try {
-                val summary = wellnessManager.engine.getDailyNutritionSummary()
-                withContext(Dispatchers.Main) {
-                    txtHeaderSubtitle.text = "Today · ${summary.totalCalories.toInt()} kcal · ${summary.totalProtein.toInt()}g protein"
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("IQOO_WELLNESS", "Error loading daily nutrition: ${e.message}", e)
-            }
-        }
-    }
-
-    private fun transitionToPortionSelection(result: com.iqoo.wellness.engine.personalization.PersonalizedNutritionResult) {
-        containerFoodConfirmation.visibility = View.GONE
-        containerPortionSelection.visibility = View.VISIBLE
-        containerConfirmedAction.visibility = View.GONE
-
-        txtResultTitle.text = result.foodItem.name
-
-        val defaultGrams = if (result.context.typicalPortionGrams > 0) result.context.typicalPortionGrams else 250.0
-
-        if (result.isPersonalized && result.context.hasHistory) {
-            // Case A: User has history -> Suggest usual portion
-            txtPortionPrompt.text = "Your usual portion: ~${defaultGrams.toInt()}g (Based on previous meals)"
-            val usualRounded = (defaultGrams / 5.0).toInt() * 5.0
-            presetSmallGrams = ((usualRounded - 25.0).coerceAtLeast(25.0) / 5.0).toInt() * 5.0
-            presetMediumGrams = usualRounded
-            presetLargeGrams = ((usualRounded + 25.0) / 5.0).toInt() * 5.0
-
-            btnPresetSmall.text = "${presetSmallGrams.toInt()}g"
-            btnPresetMedium.text = "${presetMediumGrams.toInt()}g (Usual)"
-            btnPresetLarge.text = "${presetLargeGrams.toInt()}g"
-        } else {
-            // Case B: First scan defaults (0.5x, 1.0x, 1.5x)
-            txtPortionPrompt.text = "How much did you eat?"
-            presetSmallGrams = Math.round((defaultGrams * 0.5) / 10.0) * 10.0
-            presetMediumGrams = Math.round(defaultGrams / 10.0) * 10.0
-            presetLargeGrams = Math.round((defaultGrams * 1.5) / 10.0) * 10.0
-
-            btnPresetSmall.text = "Small (${presetSmallGrams.toInt()}g)"
-            btnPresetMedium.text = "Medium (${presetMediumGrams.toInt()}g)"
-            btnPresetLarge.text = "Large (${presetLargeGrams.toInt()}g)"
-        }
-
-        // Highlight Medium / Usual by default
-        selectPreset(presetMediumGrams, btnPresetMedium)
-    }
-
-    private fun selectPreset(grams: Double, selectedButton: TextView) {
-        currentSelectedGrams = grams
-        btnPresetSmall.setBackgroundResource(if (selectedButton == btnPresetSmall) R.drawable.bg_pill_preset_selected else R.drawable.bg_pill_preset_unselected)
-        btnPresetMedium.setBackgroundResource(if (selectedButton == btnPresetMedium) R.drawable.bg_pill_preset_selected else R.drawable.bg_pill_preset_unselected)
-        btnPresetLarge.setBackgroundResource(if (selectedButton == btnPresetLarge) R.drawable.bg_pill_preset_selected else R.drawable.bg_pill_preset_unselected)
-
-        updateLiveNutritionPreview()
-    }
-
-    private fun updateStepperSelection() {
-        btnPresetSmall.setBackgroundResource(if (currentSelectedGrams == presetSmallGrams) R.drawable.bg_pill_preset_selected else R.drawable.bg_pill_preset_unselected)
-        btnPresetMedium.setBackgroundResource(if (currentSelectedGrams == presetMediumGrams) R.drawable.bg_pill_preset_selected else R.drawable.bg_pill_preset_unselected)
-        btnPresetLarge.setBackgroundResource(if (currentSelectedGrams == presetLargeGrams) R.drawable.bg_pill_preset_selected else R.drawable.bg_pill_preset_unselected)
-
-        updateLiveNutritionPreview()
-    }
-
-    private fun updateLiveNutritionPreview() {
-        txtPortionGrams.text = "Portion: ${currentSelectedGrams.toInt()} g"
-        val foodId = activeFoodResult?.foodItem?.foodId ?: return
-        val foodName = activeFoodResult?.foodItem?.name ?: return
-
-        lifecycleScope.launch {
-            val nutrition = wellnessManager.engine.calculateNutritionForPortion(foodId, foodName, currentSelectedGrams)
-            runOnUiThread {
-                if (nutrition != null && nutrition.isAvailable) {
-                    txtResultMacros.visibility = View.VISIBLE
-                    txtResultMacros.text = "~${nutrition.calories.toInt()} kcal  •  Protein ${nutrition.protein}g  •  Carbs ${nutrition.carbohydrates}g  •  Fat ${nutrition.fat}g  •  Fiber ${nutrition.fiber}g"
-                } else {
-                    txtResultMacros.visibility = View.VISIBLE
-                    txtResultMacros.text = "Nutrition data unavailable for this food."
-                }
-            }
-        }
-    }
-
-    private fun resetFoodScanning() {
-        android.util.Log.i("FOOD_SCAN", "Change Food/reset pressed; clearing visible food state")
-        wellnessManager.resetFoodScanning()
-        cameraOverlay.updateFoodResult(null)
-        currentFoodUIState = FoodUIState.SCANNING
-        activeFoodResult = null
-        imgCropThumbnail.setImageDrawable(null)
-        containerFoodConfirmation.visibility = View.GONE
-        containerPortionSelection.visibility = View.GONE
-        containerConfirmedAction.visibility = View.GONE
-        txtResultMacros.visibility = View.GONE
-        cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-        txtResultTitle.text = "Scanning for food..."
-        txtResultTitle.setTextColor(Color.parseColor("#90A4AE"))
-        txtResultConfidence.text = ""
-        iconState.setImageResource(R.drawable.ic_leaf)
-        txtResultSubtext.text = "Point the camera at a food item"
-    }
-
-    private fun updateResultCard(result: com.iqoo.wellness.engine.personalization.PersonalizedNutritionResult?) {
-        if (currentFoodUIState != FoodUIState.SCANNING) {
-            return
-        }
-
-        if (result == null) {
-            resetFoodScanning()
-            return
-        }
-
-        val item = result.foodItem
-        android.util.Log.d("FOOD_SCAN", "UI result state=${item.state} name=${item.name} thumbnailId=${item.thumbnail?.let { System.identityHashCode(it) }}")
-        item.thumbnail?.let { imgCropThumbnail.setImageBitmap(it) }
-
-        when (item.state) {
-            FoodResultState.NOT_FOOD -> {
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_not_food)
-                txtResultTitle.text = "No food detected"
-                txtResultTitle.setTextColor(Color.parseColor("#EF5350"))
-                txtResultConfidence.text = "${(item.confidence * 100).toInt()}%"
-                txtResultConfidence.setTextColor(Color.parseColor("#EF5350"))
-                iconState.setImageResource(R.drawable.ic_warning_circle)
-                txtResultSubtext.text = "Point the camera at a food item."
-                txtResultMacros.visibility = View.GONE
-                containerFoodConfirmation.visibility = View.GONE
-                containerPortionSelection.visibility = View.GONE
-                containerConfirmedAction.visibility = View.GONE
-            }
-            FoodResultState.LOW_CONFIDENCE -> {
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-                val displayName = if (item.name.isNotBlank() && item.name != "Unknown Food") "${item.name}?" else "Unknown Food"
-                txtResultTitle.text = displayName
-                txtResultTitle.setTextColor(Color.parseColor("#FFB74D"))
-                txtResultConfidence.text = "${(item.confidence * 100).toInt()}%"
-                txtResultConfidence.setTextColor(Color.parseColor("#FFB74D"))
-                iconState.setImageResource(R.drawable.ic_warning_circle)
-                txtResultSubtext.text = "Hold steady and point the camera at a food item."
-                txtResultMacros.visibility = View.GONE
-                containerFoodConfirmation.visibility = View.GONE
-                containerPortionSelection.visibility = View.GONE
-                containerConfirmedAction.visibility = View.GONE
-            }
-            FoodResultState.SCANNING -> {
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-                val displayName = "Scanning for food..."
-                txtResultTitle.text = displayName
-                txtResultTitle.setTextColor(Color.parseColor("#90A4AE"))
-                txtResultConfidence.text = if (item.confidence > 0f) "${(item.confidence * 100).toInt()}%" else ""
-                txtResultConfidence.setTextColor(Color.parseColor("#00E5FF"))
-                iconState.setImageResource(R.drawable.ic_leaf)
-                txtResultSubtext.text = "Point the camera at a food item"
-                txtResultMacros.visibility = View.GONE
-                containerFoodConfirmation.visibility = View.GONE
-                containerPortionSelection.visibility = View.GONE
-                containerConfirmedAction.visibility = View.GONE
-            }
-            FoodResultState.FOOD_DETECTED -> {
-                activeFoodResult = result
-                currentFoodUIState = FoodUIState.FOOD_DETECTED
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_food)
-                txtResultTitle.text = "Is this ${item.name}?"
-                txtResultTitle.setTextColor(Color.WHITE)
-                txtResultConfidence.text = "${(item.confidence * 100).toInt()}%"
-                txtResultConfidence.setTextColor(Color.parseColor("#2ECC71"))
-                iconState.setImageResource(R.drawable.ic_leaf)
-                txtResultSubtext.text = if (result.isPersonalized) result.displaySubtext else "Please confirm dish to calculate nutrition."
-                txtResultMacros.visibility = View.GONE
-
-                containerFoodConfirmation.visibility = View.VISIBLE
-                containerPortionSelection.visibility = View.GONE
-                containerConfirmedAction.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun updatePostureResultCard(feedback: com.iqoo.wellness.engine.posture.PostureFeedback?) {
-        containerFoodConfirmation.visibility = View.GONE
-        containerPortionSelection.visibility = View.GONE
-        containerConfirmedAction.visibility = View.GONE
-        txtResultMacros.visibility = View.GONE
-        imgCropThumbnail.setImageResource(R.drawable.ic_person)
-        imgCropThumbnail.setBackgroundColor(Color.parseColor("#263238"))
-        iconState.setImageResource(R.drawable.ic_person)
-
-        when {
-            feedback == null || feedback.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.NO_PERSON -> {
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_not_food)
-                txtResultTitle.text = "No person detected"
-                txtResultConfidence.text = ""
-                txtResultSubtext.text = "Step into the camera frame."
-            }
-            feedback.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.INSUFFICIENT -> {
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-                txtResultTitle.text = "Pose not clear"
-                txtResultConfidence.text = ""
-                txtResultSubtext.text = "Make sure your full body is visible."
-            }
-            feedback.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.NO_EXERCISE -> {
-                cardResult.setBackgroundResource(R.drawable.bg_result_card_scanning)
-                txtResultTitle.text = "No exercise detected"
-                txtResultConfidence.text = ""
-                txtResultSubtext.text = "Perform a supported exercise."
-            }
-            else -> {
-                cardResult.setBackgroundResource(
-                    if (feedback.isFormCorrect) R.drawable.bg_result_card_food else R.drawable.bg_result_card_not_food
-                )
-                txtResultTitle.text = feedback.detectedActivity
-                txtResultConfidence.text = "${(feedback.confidence * 100).toInt()}%"
-                txtResultConfidence.setTextColor(
-                    if (feedback.isFormCorrect) Color.parseColor("#2ECC71") else Color.parseColor("#EF5350")
-                )
-                val angle = if (feedback.primaryAngleDegrees in 0.1..180.0) " • ${feedback.primaryAngleDegrees.toInt()}°" else ""
-                val status = if (feedback.isFormCorrect) "✓ Correct Form" else "! Needs Correction"
-                txtResultSubtext.text = "$status • ${feedback.repCount} reps$angle\n${feedback.feedbackMessage}"
-                iconState.setImageResource(if (feedback.isFormCorrect) R.drawable.ic_leaf else R.drawable.ic_warning_circle)
-            }
-        }
-        txtResultTitle.setTextColor(if (feedback?.poseStatus == com.iqoo.wellness.engine.posture.PoseStatus.VALID) Color.WHITE else Color.parseColor("#EF5350"))
-        cardResult.visibility = View.VISIBLE
-    }
-
-    private fun switchMode(mode: SceneType) {
-        wellnessManager.setMode(mode)
-        cameraOverlay.setMode(mode)
-        cameraOverlay.updatePostureFeedback(null)
-
-        if (mode == SceneType.NORMAL) {
-            resetFoodScanning()
-            cardResult.visibility = View.GONE
-        } else if (mode == SceneType.EXERCISE) {
-            resetFoodScanning()
-            updatePostureResultCard(null)
-        } else {
-            cardResult.visibility = View.VISIBLE
-            resetFoodScanning()
-        }
-
-        btnAuto.setBackgroundResource(if (mode == SceneType.NORMAL) R.drawable.bg_mode_pill_active else R.drawable.bg_mode_pill_inactive)
-        btnAuto.setTextColor(if (mode == SceneType.NORMAL) Color.WHITE else Color.parseColor("#CFD8DC"))
-        btnFood.setBackgroundResource(if (mode == SceneType.FOOD) R.drawable.bg_mode_pill_active else R.drawable.bg_mode_pill_inactive)
-        btnFood.setTextColor(if (mode == SceneType.FOOD) Color.WHITE else Color.parseColor("#CFD8DC"))
-        btnPosture.setBackgroundResource(if (mode == SceneType.EXERCISE) R.drawable.bg_mode_pill_active else R.drawable.bg_mode_pill_inactive)
-        btnPosture.setTextColor(if (mode == SceneType.EXERCISE) Color.WHITE else Color.parseColor("#CFD8DC"))
-
-        when (mode) {
-            SceneType.FOOD -> {
-                txtBottomHint.text = "Point the camera at a food item"
-                txtBottomSubhint.text = "Hold steady for best results"
-            }
-            SceneType.EXERCISE -> {
-                txtBottomHint.text = "Stand in frame for posture check"
-                txtBottomSubhint.text = "Full body visibility recommended"
-            }
-            SceneType.NORMAL -> {
-                txtBottomHint.text = "Auto-detecting scene"
-                txtBottomSubhint.text = "Camera intelligence active"
-            }
-        }
-    }
-
-    private fun checkPermissionsAndStart() {
+    private fun checkPermissions() {
         val permissions = mutableListOf(Manifest.permission.CAMERA)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             permissions.add(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -582,32 +79,8 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
 
-        if (allGranted) {
-            setupCamera()
-        } else {
+        if (!allGranted) {
             permissionLauncher.launch(permissions.toTypedArray())
         }
-    }
-
-    private fun setupCamera() {
-        cameraManager = CameraManager(
-            context = this,
-            lifecycleOwner = this,
-            previewView = previewView,
-            frameListener = wellnessManager
-        )
-        cameraManager?.startCamera(
-            onSuccess = {
-                refreshDailyNutritionTotals()
-            },
-            onError = { exc ->
-                Toast.makeText(this, "Camera initialization failed: ${exc.message}", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraManager?.shutdown()
     }
 }

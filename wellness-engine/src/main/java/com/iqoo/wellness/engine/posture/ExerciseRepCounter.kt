@@ -23,6 +23,7 @@ class ExerciseRepCounter(
     private var repCount = 0
     private var lastAngle = 0.0
     private var lastInstruction = "Hold a steady position"
+    private var hasObservedNeutral = false
 
     fun update(type: ExerciseType, landmarks: List<BodyLandmark>): RepSnapshot {
         if (exerciseType != type) reset(type)
@@ -33,6 +34,7 @@ class ExerciseRepCounter(
         lastAngle = measurement.angle
         lastInstruction = measurement.instruction
 
+        previousPhaseForLog = phase
         if (candidatePhase == measurement.phase) {
             candidateFrames++
         } else {
@@ -45,9 +47,22 @@ class ExerciseRepCounter(
             phase = measurement.phase
             if (measurement.countOnNeutral && previous == Phase.ACTIVE && phase == Phase.NEUTRAL) {
                 repCount++
-            } else if (measurement.countOnActive && previous == Phase.NEUTRAL && phase == Phase.ACTIVE) {
+            } else if (measurement.countOnActive && hasObservedNeutral && previous == Phase.NEUTRAL && phase == Phase.ACTIVE) {
                 repCount++
             }
+        }
+
+        if (measurement.phase == Phase.NEUTRAL) hasObservedNeutral = true
+
+        if (type == ExerciseType.ARM_RAISE) {
+            android.util.Log.d(
+                "ARM_RAISE_REP",
+                "leftWristY=${points[15]?.y} rightWristY=${points[16]?.y} " +
+                    "leftShoulderY=${points[11]?.y} rightShoulderY=${points[12]?.y} " +
+                    "activeSide=${if (measurement.phase == Phase.ACTIVE) "ARM" else "NONE"} " +
+                    "previousState=${if (previousPhaseForLog == Phase.ACTIVE) "RAISED" else "LOWERED"} " +
+                    "currentState=${if (phase == Phase.ACTIVE) "RAISED" else "LOWERED"} reps=$repCount"
+            )
         }
 
         if (type == ExerciseType.RUSSIAN_TWISTS && measurement.twistSide != 0) {
@@ -83,6 +98,8 @@ class ExerciseRepCounter(
         repCount = 0
         lastAngle = 0.0
         lastInstruction = "Hold a steady position"
+        hasObservedNeutral = false
+        previousPhaseForLog = Phase.NEUTRAL
         lastTwistSide = 0
         candidateTwistSide = 0
         candidateTwistFrames = 0
@@ -128,10 +145,16 @@ class ExerciseRepCounter(
                 Measurement(if (angle > 165.0) Phase.ACTIVE else Phase.NEUTRAL, angle, if (angle > 165.0) "Lower under control" else "Press overhead")
             }
             ExerciseType.ARM_RAISE -> {
-                val shoulderY = averageY(p, 11, 12)
-                val wristY = averageY(p, 15, 16)
-                val raised = wristY < shoulderY - 0.08f
-                Measurement(if (raised) Phase.ACTIVE else Phase.NEUTRAL, 0.0, if (raised) "Lower your arms" else "Raise both arms")
+                val raised = listOf(11 to 15, 12 to 16).mapNotNull { (shoulder, wrist) ->
+                    val shoulderPoint = p[shoulder]
+                    val wristPoint = p[wrist]
+                    if (shoulderPoint != null && wristPoint != null) {
+                        wristPoint.y < shoulderPoint.y - 0.08f
+                    } else {
+                        null
+                    }
+                }.any { it }
+                Measurement(if (raised) Phase.ACTIVE else Phase.NEUTRAL, 0.0, if (raised) "Lower your arm" else "Raise your arm")
             }
             ExerciseType.JUMPING_JACKS -> {
                 val shoulderWidth = distanceX(p, 11, 12)
@@ -157,6 +180,7 @@ class ExerciseRepCounter(
     private var lastTwistSide = 0
     private var candidateTwistSide = 0
     private var candidateTwistFrames = 0
+    private var previousPhaseForLog = Phase.NEUTRAL
 
     private fun angle(p: Map<Int, BodyLandmark>, a: Int, b: Int, c: Int): Double {
         val first = p[a] ?: return 0.0

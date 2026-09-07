@@ -16,3 +16,4 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+antigravity-terminal-history.txt

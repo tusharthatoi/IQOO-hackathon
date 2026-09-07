@@ -16,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Facade bridging camera frame delivery to the underlying WellnessEngine.
@@ -27,11 +28,13 @@ class WellnessManager(
 ) : FrameListener {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val frameInFlight = AtomicBoolean(false)
 
     var onSceneDetected: ((SceneType) -> Unit)? = null
     var onFoodAnalyzed: ((PersonalizedNutritionResult?) -> Unit)? = null
     var onPostureAnalyzed: ((PostureFeedback?) -> Unit)? = null
 
+    @Volatile
     private var activeMode: SceneType = SceneType.NORMAL
     private val foodScanGeneration = AtomicLong(0L)
     var activeExerciseType: ExerciseType = ExerciseType.SQUAT
@@ -57,6 +60,10 @@ class WellnessManager(
         rotationDegrees: Int,
         planes: Array<ByteBuffer>
     ) {
+        if (!frameInFlight.compareAndSet(false, true)) {
+            android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Dropping frame while inference is in flight")
+            return
+        }
         scope.launch {
             try {
                 android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Active mode: $activeMode")
@@ -81,12 +88,24 @@ class WellnessManager(
                         }
                     }
                     SceneType.EXERCISE -> {
+                        android.util.Log.d("POSE_ANALYZER", "frameId=async mode=EXERCISE bitmap=${bitmap != null}")
                         val feedback = if (bitmap != null) {
                             engine.analyzePose(bitmap, activeExerciseType)
                         } else {
                             engine.analyzePose(null, activeExerciseType)
                         }
                         android.util.Log.i("POSTURE_TRACE", "manager confidence=${feedback?.confidence} status=${feedback?.poseStatus}")
+                        android.util.Log.d(
+                            "EXERCISE_CONFIDENCE_TRACE",
+                            "detector=${feedback?.exerciseConfidence} engine=${feedback?.exerciseConfidence} " +
+                                "manager=${feedback?.exerciseConfidence} selectedExercise=${activeExerciseType.displayName} " +
+                                "detectedExercise=${feedback?.detectedActivity} confidence=${feedback?.exerciseConfidence}"
+                        )
+                        android.util.Log.d(
+                            "UI_STATE",
+                            "exercise=${feedback?.detectedActivity} confidence=${feedback?.exerciseConfidence} " +
+                                "posture=${feedback?.confidence} reps=${feedback?.repCount} status=${feedback?.poseStatus}"
+                        )
                         android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Posture output: rep=${feedback?.repCount}, state=${feedback?.currentState}, angle=${feedback?.primaryAngleDegrees}")
                         onPostureAnalyzed?.invoke(feedback)
                     }
@@ -99,7 +118,15 @@ class WellnessManager(
                 }
             } catch (e: Exception) {
                 android.util.Log.e("IQOO_WELLNESS", "[PIPELINE] Error in frame pipeline: ${e.message}", e)
+            } finally {
+                frameInFlight.set(false)
             }
         }
+    }
+
+    fun clearCallbacks() {
+        onSceneDetected = null
+        onFoodAnalyzed = null
+        onPostureAnalyzed = null
     }
 }

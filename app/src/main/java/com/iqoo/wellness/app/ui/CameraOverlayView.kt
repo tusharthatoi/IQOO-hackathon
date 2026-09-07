@@ -116,6 +116,11 @@ class CameraOverlayView @JvmOverloads constructor(
 
     fun updatePostureFeedback(feedback: PostureFeedback?) {
         this.postureFeedback = feedback
+        android.util.Log.d(
+            "POSE_OVERLAY",
+            "poseReceived=${feedback?.landmarks?.isNotEmpty() == true} landmarkCount=${feedback?.landmarks?.size ?: 0} " +
+                "width=$width height=$height invalidateCalled=true"
+        )
         postInvalidate()
     }
 
@@ -201,11 +206,11 @@ class CameraOverlayView @JvmOverloads constructor(
         connections.forEach { (first, second) ->
             val start = byId[first]
             val end = byId[second]
-            if (start != null && end != null) {
+            if (start != null && end != null && start.visibility >= 0.5f && end.visibility >= 0.5f) {
                 canvas.drawLine(start.x * w, start.y * h, end.x * w, end.y * h, paint)
             }
         }
-        byId.values.forEach { lm ->
+        byId.values.filter { it.visibility >= 0.5f }.forEach { lm ->
             canvas.drawCircle(lm.x * w, lm.y * h, 8f, jointPointPaint)
         }
     }
