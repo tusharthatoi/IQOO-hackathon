@@ -19,7 +19,8 @@ object NutritionCalculator {
             carbohydrates = roundToOneDecimal(food.carbsPer100g * factor),
             fat = roundToOneDecimal(food.fatPer100g * factor),
             fiber = roundToOneDecimal(food.fiberPer100g * factor),
-            servingGrams = grams
+            servingGrams = grams,
+            isAvailable = true
         )
     }
 
@@ -40,8 +41,6 @@ object NutritionCalculator {
         val riceGrams = context.ingredientQuantities["rice"] ?: context.ingredientQuantities["rice_g"]
         val chickenGrams = context.ingredientQuantities["chicken"] ?: context.ingredientQuantities["chicken_g"]
         if (riceGrams != null && chickenGrams != null && (riceGrams + chickenGrams) > 0) {
-            // Cooked white rice: ~130 kcal/100g, 2.7g P, 28g C, 0.3g F
-            // Cooked chicken breast/thigh blend: ~165 kcal/100g, 25g P, 0g C, 7g F
             val riceCalories = (riceGrams / 100.0) * 130.0
             val riceProtein = (riceGrams / 100.0) * 2.7
             val riceCarbs = (riceGrams / 100.0) * 28.2
@@ -59,28 +58,24 @@ object NutritionCalculator {
         }
 
         // 2. Oil / Fat Adjustment
-        // 1g oil/ghee = 9 kcal, 1g fat
         if (context.oilGrams != null && context.oilGrams > 0) {
             val oilCal = context.oilGrams * 9.0
             val oilFat = context.oilGrams * 1.0
-            // Incorporate known oil amount
             calories += oilCal
             fat += oilFat
         } else if (context.oilFatLevel != null) {
             when (context.oilFatLevel.uppercase()) {
                 "LIGHT" -> {
-                    // 20% less fat than baseline
                     fat *= 0.8
                     calories -= (baseline.fat * 0.2 * 9.0)
                 }
                 "HEAVY" -> {
-                    // 30% more fat than baseline
                     fat *= 1.3
                     calories += (baseline.fat * 0.3 * 9.0)
                 }
                 "NONE" -> {
                     calories -= (fat * 9.0)
-                    fat = 0.5 // residual fat
+                    fat = 0.5
                 }
             }
         }
@@ -88,20 +83,19 @@ object NutritionCalculator {
         // 3. Cooking / Frying Method Adjustment
         when (context.fryingMethod?.uppercase() ?: context.cookingMethod?.uppercase()) {
             "DEEP_FRIED" -> {
-                // Absorbs roughly 8-12% additional fat by weight
                 val addedFat = targetGrams * 0.08
                 fat += addedFat
                 calories += addedFat * 9.0
             }
             "AIR_FRIED", "BAKED", "STEAMED", "PRESSURE_COOKED", "PRESSURE-COOKED" -> {
-                // Lean cooking methods preserve nutrients without excess oil absorption
+                // Preserves nutrients without excess oil
             }
         }
 
-        // 4. Ingredient Substitutions (e.g. brown rice adds dietary fiber)
+        // 4. Ingredient Substitutions
         val grainSub = context.substitutions["grain"] ?: context.substitutions["rice"]
         if (grainSub?.contains("brown", ignoreCase = true) == true) {
-            fiber += (targetGrams / 100.0) * 1.8 // +1.8g fiber per 100g
+            fiber += (targetGrams / 100.0) * 1.8
         }
 
         return NutritionProfile(
@@ -110,7 +104,20 @@ object NutritionCalculator {
             carbohydrates = roundToOneDecimal(carbs),
             fat = roundToOneDecimal(fat),
             fiber = roundToOneDecimal(fiber),
-            servingGrams = targetGrams
+            servingGrams = targetGrams,
+            isAvailable = true
+        )
+    }
+
+    fun unavailable(grams: Double): NutritionProfile {
+        return NutritionProfile(
+            calories = 0.0,
+            protein = 0.0,
+            carbohydrates = 0.0,
+            fat = 0.0,
+            fiber = 0.0,
+            servingGrams = grams,
+            isAvailable = false
         )
     }
 
