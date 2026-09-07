@@ -83,6 +83,14 @@ interface WellnessEngine {
     ): PostureFeedback?
 
     /**
+     * Executes exercise posture pipeline using a camera-derived Bitmap frame.
+     */
+    suspend fun analyzePose(
+        bitmap: Bitmap,
+        exerciseType: ExerciseType = ExerciseType.SQUAT
+    ): PostureFeedback? = analyzePose(null, exerciseType)
+
+    /**
      * Retrieves daily physical activity summary (steps and calories burned).
      * Enforces strict 21-day local SQLite retention policy.
      */

@@ -15,6 +15,7 @@ import com.iqoo.wellness.engine.posture.BicepCurlStateMachine
 import com.iqoo.wellness.engine.posture.ExerciseStateMachine
 import com.iqoo.wellness.engine.posture.ExerciseType
 import com.iqoo.wellness.engine.posture.LungeStateMachine
+import com.iqoo.wellness.engine.posture.ONNXExercisePoseDetector
 import com.iqoo.wellness.engine.posture.OnDevicePoseDetector
 import com.iqoo.wellness.engine.posture.PoseDetector
 import com.iqoo.wellness.engine.posture.PostureFeedback
@@ -256,6 +257,17 @@ class WellnessEngineImpl(
         feedback
     }
 
+    override suspend fun analyzePose(
+        bitmap: Bitmap,
+        exerciseType: ExerciseType
+    ): PostureFeedback? = withContext(Dispatchers.Default) {
+        if (poseDetector is ONNXExercisePoseDetector) {
+            poseDetector.processFrame(bitmap, exerciseType)
+        } else {
+            analyzePose(null, exerciseType)
+        }
+    }
+
     override suspend fun getActivitySummary(): ActivitySummary = withContext(Dispatchers.IO) {
         stepTracker?.getActivitySummary() ?: ActivitySummary(
             steps = 0,
@@ -278,9 +290,11 @@ class WellnessEngineImpl(
             val tracker = StepSensorTracker(context, db.dailyActivityDao())
             tracker.startTracking()
             val tfliteRecognizer = TFLiteFoodRecognizer(context)
+            val onnxPoseDetector = ONNXExercisePoseDetector(context)
             return WellnessEngineImpl(
                 database = db,
                 foodRecognizer = tfliteRecognizer,
+                poseDetector = onnxPoseDetector,
                 stepTracker = tracker
             )
         }

@@ -32,6 +32,7 @@ class WellnessManager(
     var onPostureAnalyzed: ((PostureFeedback?) -> Unit)? = null
 
     private var activeMode: SceneType = SceneType.NORMAL
+    var activeExerciseType: ExerciseType = ExerciseType.SQUAT
 
     fun setMode(mode: SceneType) {
         activeMode = mode
@@ -59,7 +60,11 @@ class WellnessManager(
                         onFoodAnalyzed?.invoke(result)
                     }
                     SceneType.EXERCISE -> {
-                        val feedback = engine.analyzePose()
+                        val feedback = if (bitmap != null) {
+                            engine.analyzePose(bitmap, activeExerciseType)
+                        } else {
+                            engine.analyzePose(null, activeExerciseType)
+                        }
                         android.util.Log.d("IQOO_WELLNESS", "[PIPELINE] Posture output: rep=${feedback?.repCount}, state=${feedback?.currentState}, angle=${feedback?.primaryAngleDegrees}")
                         onPostureAnalyzed?.invoke(feedback)
                     }

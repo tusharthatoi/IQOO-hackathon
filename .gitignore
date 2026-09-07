@@ -9,6 +9,8 @@ local.properties
 FOLDER_ARCHITECTURE.txT 
 
 # Local Webcam Test Tool & Python Artifacts (Isolated local test only)
+tools/webcam_test/
+learning.txt
 
 __pycache__/
 *.pyc
