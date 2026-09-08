@@ -92,6 +92,12 @@ class FoodFragment : Fragment() {
             cameraManager?.shutdown()
             (requireActivity() as MainActivity).openTab(R.id.nav_exercise)
         }
+        binding.btnFoodMemory.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.nav_host_fragment, FoodMemoryFragment())
+                .addToBackStack("food_memory")
+                .commit()
+        }
 
         binding.btnConfirmFood.setOnClickListener {
             val result = activeFoodResult ?: return@setOnClickListener
