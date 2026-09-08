@@ -37,6 +37,9 @@ class WellnessManager(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val frameInFlight = AtomicBoolean(false)
+    private val offlineDataReady = scope.launch {
+        engine.initializeOfflineData()
+    }
 
     var onSceneDetected: ((SceneType) -> Unit)? = null
     var onFoodAnalyzed: ((PersonalizedNutritionResult?) -> Unit)? = null
@@ -118,6 +121,7 @@ class WellnessManager(
                 // Cascaded frame dispatching according to active mode
                 when (activeMode) {
                     SceneType.FOOD -> {
+                        offlineDataReady.join()
                         val generation = foodScanGeneration.get()
                         android.util.Log.d(
                             "WELLNESS_MANAGER",

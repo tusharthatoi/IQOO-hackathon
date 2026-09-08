@@ -155,6 +155,10 @@ class FoodFragment : Fragment() {
         if (isSavingMeal) return
         val result = activeFoodResult ?: return
         isSavingMeal = true
+        android.util.Log.i(
+            "FOOD_CONFIRM",
+            "food=${result.foodItem.name} confidence=${result.foodItem.confidence} grams=$currentSelectedGrams"
+        )
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {

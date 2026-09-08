@@ -169,7 +169,7 @@ class FoodPersonalizationEngine(
         preparationContextDao.insertContext(contextEntity)
 
         if (calculatedNutrition != null && calculatedNutrition.isAvailable) {
-            foodHistoryDao.insertFoodHistory(
+            val historyId = foodHistoryDao.insertFoodHistory(
                 FoodHistoryEntity(
                     foodId = foodId,
                     foodName = foodName,
@@ -182,6 +182,15 @@ class FoodPersonalizationEngine(
                     isUserConfirmed = true,
                     timestamp = now
                 )
+            )
+            android.util.Log.i(
+                "FOOD_SAVE",
+                "food=$foodName success=true id=$historyId calories=${calculatedNutrition.calories}"
+            )
+        } else {
+            android.util.Log.e(
+                "FOOD_SAVE",
+                "food=$foodName success=false reason=nutrition_unavailable"
             )
         }
     }

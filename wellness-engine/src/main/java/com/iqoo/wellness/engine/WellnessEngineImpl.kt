@@ -215,8 +215,11 @@ class WellnessEngineImpl(
     ) = withContext(Dispatchers.IO) {
         cachedNutritionKey = null
         cachedNutritionResult = null
+        android.util.Log.i("FOOD_CONFIRM", "food=$foodName grams=$confirmedPortionGrams")
+        initializeOfflineData()
         val seedFood = database.foodDao().getFoodById(foodId)
             ?: database.foodDao().getFoodByName(foodName)
+        android.util.Log.d("FOOD_CONFIRM", "food=$foodName seedFound=${seedFood != null}")
 
         val tempContext = com.iqoo.wellness.engine.personalization.PersonalizedFoodContext(
             foodId = foodId,
