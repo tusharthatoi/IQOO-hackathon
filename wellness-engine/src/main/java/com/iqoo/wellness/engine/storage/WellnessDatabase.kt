@@ -11,9 +11,10 @@ import androidx.room.RoomDatabase
         PortionHistoryEntity::class,
         FoodHistoryEntity::class,
         FoodPreparationContextEntity::class,
-        DailyActivityEntity::class
+        DailyActivityEntity::class,
+        WorkoutSessionEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class WellnessDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class WellnessDatabase : RoomDatabase() {
     abstract fun foodHistoryDao(): FoodHistoryDao
     abstract fun foodPreparationContextDao(): FoodPreparationContextDao
     abstract fun dailyActivityDao(): DailyActivityDao
+    abstract fun workoutSessionDao(): WorkoutSessionDao
 
     companion object {
         @Volatile
@@ -33,7 +35,7 @@ abstract class WellnessDatabase : RoomDatabase() {
                     context.applicationContext,
                     WellnessDatabase::class.java,
                     "iqoo_wellness.db"
-                ).fallbackToDestructiveMigration().build()
+                ).addMigrations(MIGRATION_2_3).build()
                 INSTANCE = instance
                 instance
             }
@@ -44,6 +46,20 @@ abstract class WellnessDatabase : RoomDatabase() {
                 context,
                 WellnessDatabase::class.java
             ).allowMainThreadQueries().build()
+        }
+
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL(
+                    "CREATE TABLE IF NOT EXISTS workout_sessions (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "exercise_type TEXT NOT NULL, reps INTEGER NOT NULL, " +
+                        "durationSeconds INTEGER NOT NULL, formScore REAL, " +
+                        "exerciseConfidence REAL, timestamp INTEGER NOT NULL)"
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_workout_sessions_timestamp ON workout_sessions(timestamp)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_workout_sessions_exercise_type ON workout_sessions(exercise_type)")
+            }
         }
     }
 }

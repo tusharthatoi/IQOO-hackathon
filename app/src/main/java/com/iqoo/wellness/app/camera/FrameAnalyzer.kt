@@ -41,6 +41,11 @@ class FrameAnalyzer(
             return
         }
 
+        if (listener is com.iqoo.wellness.app.WellnessManager && !listener.canAcceptFrame()) {
+            image.close()
+            return
+        }
+
         try {
             lastAnalyzedTimestampMs = currentTimestampMs
             frameId += 1

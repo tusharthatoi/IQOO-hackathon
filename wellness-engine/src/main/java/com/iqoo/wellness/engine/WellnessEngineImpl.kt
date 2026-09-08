@@ -33,6 +33,7 @@ import com.iqoo.wellness.engine.storage.WellnessDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import com.iqoo.wellness.engine.storage.WorkoutSessionEntity
 
 class WellnessEngineImpl(
     override val database: WellnessDatabase,
@@ -67,6 +68,28 @@ class WellnessEngineImpl(
         }
         stepTracker?.enforceRetentionPolicy()
         Unit
+    }
+
+    override suspend fun saveWorkoutSession(session: WorkoutSessionEntity) = withContext(Dispatchers.IO) {
+        database.workoutSessionDao().insert(session)
+        val cutoff = System.currentTimeMillis() - 6L * 86_400_000L
+        database.workoutSessionDao().deleteOlderThan(cutoff)
+        Unit
+    }
+
+    override suspend fun getWorkoutSessionsSince(cutoffTimestamp: Long): List<WorkoutSessionEntity> =
+        withContext(Dispatchers.IO) { database.workoutSessionDao().getSince(cutoffTimestamp) }
+
+    override suspend fun getWorkoutSessionsForDay(dateTimestamp: Long): List<WorkoutSessionEntity> = withContext(Dispatchers.IO) {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = dateTimestamp
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val start = cal.timeInMillis
+        database.workoutSessionDao().getForDay(start, start + 86_400_000L)
     }
 
     override suspend fun analyzeScene(frameData: ByteArray?): SceneType = withContext(Dispatchers.Default) {

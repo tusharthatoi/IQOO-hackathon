@@ -12,6 +12,7 @@ import com.iqoo.wellness.engine.storage.DailyNutritionSummary
 import com.iqoo.wellness.engine.storage.FoodHistoryEntity
 import com.iqoo.wellness.engine.storage.FoodMemoryRecord
 import com.iqoo.wellness.engine.storage.WellnessDatabase
+import com.iqoo.wellness.engine.storage.WorkoutSessionEntity
 
 /**
  * Public contract for the iQOO Wellness AI Engine.
@@ -81,4 +82,10 @@ interface WellnessEngine {
     suspend fun getFoodMemory(): List<FoodMemoryRecord>
 
     suspend fun initializeOfflineData()
+
+    suspend fun saveWorkoutSession(session: WorkoutSessionEntity)
+
+    suspend fun getWorkoutSessionsSince(cutoffTimestamp: Long): List<WorkoutSessionEntity>
+
+    suspend fun getWorkoutSessionsForDay(dateTimestamp: Long): List<WorkoutSessionEntity>
 }
