@@ -33,6 +33,7 @@ import com.iqoo.wellness.engine.storage.WellnessDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import com.iqoo.wellness.engine.storage.WorkoutSessionEntity
 
 class WellnessEngineImpl(
     override val database: WellnessDatabase,
@@ -56,6 +57,9 @@ class WellnessEngineImpl(
         ExerciseType.SHOULDER_PRESS to ShoulderPressStateMachine()
     )
 
+    private var cachedNutritionKey: String? = null
+    private var cachedNutritionResult: PersonalizedNutritionResult? = null
+
     override suspend fun initializeOfflineData() = withContext(Dispatchers.IO) {
         val count = database.foodDao().getAllFoods().size
         if (count < FoodSeedDatabase.SEED_FOODS.size) {
@@ -64,6 +68,28 @@ class WellnessEngineImpl(
         }
         stepTracker?.enforceRetentionPolicy()
         Unit
+    }
+
+    override suspend fun saveWorkoutSession(session: WorkoutSessionEntity) = withContext(Dispatchers.IO) {
+        database.workoutSessionDao().insert(session)
+        val cutoff = System.currentTimeMillis() - 6L * 86_400_000L
+        database.workoutSessionDao().deleteOlderThan(cutoff)
+        Unit
+    }
+
+    override suspend fun getWorkoutSessionsSince(cutoffTimestamp: Long): List<WorkoutSessionEntity> =
+        withContext(Dispatchers.IO) { database.workoutSessionDao().getSince(cutoffTimestamp) }
+
+    override suspend fun getWorkoutSessionsForDay(dateTimestamp: Long): List<WorkoutSessionEntity> = withContext(Dispatchers.IO) {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = dateTimestamp
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val start = cal.timeInMillis
+        database.workoutSessionDao().getForDay(start, start + 86_400_000L)
     }
 
     override suspend fun analyzeScene(frameData: ByteArray?): SceneType = withContext(Dispatchers.Default) {
@@ -85,6 +111,8 @@ class WellnessEngineImpl(
 
     override fun resetFoodScanning() {
         foodRecognizer.reset()
+        cachedNutritionKey = null
+        cachedNutritionResult = null
         android.util.Log.i("IQOO_WELLNESS", "[FOOD_SCAN] Engine reset completed")
     }
 
@@ -148,12 +176,17 @@ class WellnessEngineImpl(
                 )
             }
             FoodResultState.FOOD_DETECTED -> {
+                val cacheKey = "${primaryDish.foodId}|${primaryDish.name}"
+                if (cacheKey == cachedNutritionKey) {
+                    android.util.Log.d("FOOD_PIPELINE", "Reusing cached personalization for $cacheKey")
+                    return cachedNutritionResult
+                }
                 val seedFood = withContext(Dispatchers.IO) {
                     database.foodDao().getFoodById(primaryDish.foodId)
                         ?: database.foodDao().getFoodByName(primaryDish.name)
                 }
 
-                return withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     val result = personalizationEngine.getPersonalizedNutrition(
                         foodItem = primaryDish,
                         seedFood = seedFood
@@ -161,6 +194,9 @@ class WellnessEngineImpl(
                     android.util.Log.d("IQOO_WELLNESS", "[NUTRITION_ENGINE] Result for ${primaryDish.name}: ${result.nutrition.calories} kcal, personalized=${result.isPersonalized}, heading='${result.displayHeading}'")
                     result
                 }
+                cachedNutritionKey = cacheKey
+                cachedNutritionResult = result
+                return result
             }
         }
     }
@@ -177,8 +213,13 @@ class WellnessEngineImpl(
         substitutions: Map<String, String>,
         userCorrections: String?
     ) = withContext(Dispatchers.IO) {
+        cachedNutritionKey = null
+        cachedNutritionResult = null
+        android.util.Log.i("FOOD_CONFIRM", "food=$foodName grams=$confirmedPortionGrams")
+        initializeOfflineData()
         val seedFood = database.foodDao().getFoodById(foodId)
             ?: database.foodDao().getFoodByName(foodName)
+        android.util.Log.d("FOOD_CONFIRM", "food=$foodName seedFound=${seedFood != null}")
 
         val tempContext = com.iqoo.wellness.engine.personalization.PersonalizedFoodContext(
             foodId = foodId,
@@ -310,6 +351,12 @@ class WellnessEngineImpl(
         if (poseDetector is ONNXExercisePoseDetector) {
             val feedback = poseDetector.processFrame(bitmap, exerciseType)
             android.util.Log.i("POSTURE_TRACE", "engine confidence=${feedback.confidence} status=${feedback.poseStatus} activity=${feedback.detectedActivity}")
+            android.util.Log.d(
+                "EXERCISE_CONFIDENCE_TRACE",
+                "detector=${feedback.exerciseConfidence} engine=${feedback.exerciseConfidence} " +
+                    "selectedExercise=${exerciseType.displayName} detectedExercise=${feedback.detectedActivity} " +
+                    "confidence=${feedback.exerciseConfidence}"
+            )
             feedback
         } else {
             analyzePose(null, exerciseType)

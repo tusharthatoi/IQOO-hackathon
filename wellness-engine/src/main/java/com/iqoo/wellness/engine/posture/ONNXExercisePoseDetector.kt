@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.nio.FloatBuffer
 import java.util.ArrayDeque
 import kotlin.math.acos
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
 
@@ -68,9 +69,9 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
     private val wluPostScale: FloatArray
     private val wluPostLabels: List<String>
 
-    // Posture-label smoothing (exercise label is taken directly from top-1, no smoothing needed)
-    private val postureSmoothing = 5
-    private val postureHistory = ArrayDeque<String>()
+    // Short smoothing prevents one noisy model frame from changing the counter type.
+    private val exerciseSmoothing = 3
+    private val exerciseHistory = ArrayDeque<String>()
     private val repCounter = ExerciseRepCounter()
     private var previousNormalizedPose: Map<Int, Pair<Float, Float>>? = null
 
@@ -148,30 +149,42 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
      */
     suspend fun processFrame(bitmap: Bitmap, selectedExercise: ExerciseType): PostureFeedback {
         val inputImage = InputImage.fromBitmap(bitmap, 0)
-        val pose = mlKitDetector.process(inputImage).await()
+        val pose = try {
+            mlKitDetector.process(inputImage).await()
+        } catch (error: Exception) {
+            android.util.Log.e("MLKIT_POSE", "success=false reason=${error.message}", error)
+            repCounter.onInvalidPose()
+            return noPoseFeedback(
+                selectedExercise,
+                PoseStatus.INSUFFICIENT,
+                "Pose detection failed. Move into camera view."
+            )
+        }
 
         val landmarks = pose.allPoseLandmarks
+        val imgW = bitmap.width.toFloat().coerceAtLeast(1f)
+        val imgH = bitmap.height.toFloat().coerceAtLeast(1f)
+        android.util.Log.d("MLKIT_POSE", "success=true poseDetected=${landmarks.isNotEmpty()} landmarkCount=${landmarks.size}")
+        val poseValidation = validateCurrentPose(landmarks, imgW, imgH)
         android.util.Log.d(
-            "POSTURE",
-            "ML Kit landmarks=${landmarks.size}, ids=${landmarks.map { it.landmarkType }.sorted()}"
+            "POSE_VALIDATION",
+            "state=${poseValidation.status} landmarkCount=${landmarks.size} " +
+                "coreLandmarksPresent=${poseValidation.coreLandmarksPresent} " +
+                "averageLikelihood=${poseValidation.averageLikelihood} reason=${poseValidation.reason}"
         )
-        if (landmarks.isEmpty()) {
-            repCounter.onInvalidPose()
+        if (poseValidation.status == PoseStatus.NO_PERSON) {
             previousNormalizedPose = null
             android.util.Log.d("POSTURE", "valid pose=no; status=NO_PERSON; inference executed=no")
             return noPoseFeedback(selectedExercise, PoseStatus.NO_PERSON, "No person detected. Step into the camera frame.")
         }
-        if (!hasValidPose(landmarks, selectedExercise)) {
-            repCounter.onInvalidPose()
+        if (poseValidation.status == PoseStatus.INSUFFICIENT || !hasValidPose(landmarks, selectedExercise)) {
             previousNormalizedPose = null
             android.util.Log.d("POSTURE", "valid pose=no; status=INSUFFICIENT; inference executed=no; landmarks=${landmarks.size}")
             return noPoseFeedback(selectedExercise, PoseStatus.INSUFFICIENT, "Pose not clear. Make sure your full body is visible.")
         }
 
-        val imgW = bitmap.width.toFloat().coerceAtLeast(1f)
-        val imgH = bitmap.height.toFloat().coerceAtLeast(1f)
-
         val bodyLandmarks = convertLandmarks(landmarks, imgW, imgH)
+        val usableBodyLandmarks = bodyLandmarks.filter { it.visibility >= 0.5f }
         val movementScore = updateMovementScore(bodyLandmarks)   // diagnostic only
 
         // â”€â”€ ONNX inference â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -192,7 +205,6 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         // If both returned "Unknown" (both sessions failed), report inference failure.
         val bothFailed = origPred.label == "Unknown" && wluExPred.label == "Unknown"
         if (bothFailed) {
-            repCounter.onInvalidPose()
             android.util.Log.w("EXERCISE_DEBUG", "poseValid=true predictedClass=NONE reason=INFERENCE_FAILURE")
             return PostureFeedback(
                 exerciseType = selectedExercise,
@@ -216,7 +228,9 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             origPred
         }
         // top-1 label is the exercise â€” no further gate
-        val finalExerciseLabel = selected.label
+        exerciseHistory.addLast(selected.label)
+        if (exerciseHistory.size > exerciseSmoothing) exerciseHistory.removeFirst()
+        val finalExerciseLabel = getMostFrequent(exerciseHistory)
 
         // â”€â”€ Posture model (separate, does NOT affect exercise classification) â”€â”€â”€â”€â”€
         var finalPostureLabel = "Assessingâ€¦"
@@ -225,9 +239,7 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         if (wluPostSession != null) {
             val feat132PostScaled = scaleFeatures(feat132, wluPostMean, wluPostScale)
             val (pLabel, pConf) = runWluPostureInference(feat132PostScaled)
-            postureHistory.addLast(pLabel)
-            if (postureHistory.size > postureSmoothing) postureHistory.removeFirst()
-            finalPostureLabel = getMostFrequent(postureHistory)
+            finalPostureLabel = pLabel
             postureConfidence = pConf
             isCorrect = finalPostureLabel.equals("Correct", ignoreCase = true)
         }
@@ -236,8 +248,8 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         android.util.Log.i(
             "EXERCISE_DEBUG",
             "poseValid=true" +
-            " predictedClass=${selected.label}" +
-            " predictedLabel=${selected.label}" +
+            " predictedClass=$finalExerciseLabel" +
+            " predictedLabel=$finalExerciseLabel" +
             " top1=${selected.confidence}" +
             " origLabel=${origPred.label} origConf=${origPred.confidence}" +
             " wluLabel=${wluExPred.label} wluConf=${wluExPred.confidence}" +
@@ -245,8 +257,21 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             " posture=$finalPostureLabel postureConf=$postureConfidence"
         )
 
-        val exerciseForCounting = exerciseTypeForLabel(finalExerciseLabel, selectedExercise)
-        val repSnapshot = repCounter.update(exerciseForCounting, bodyLandmarks)
+        // The workout counter follows the selected session exercise. The model
+        // result remains independent and is exposed as detectedActivity.
+        val exerciseForCounting = selectedExercise
+        val repSnapshot = repCounter.update(exerciseForCounting, usableBodyLandmarks)
+        android.util.Log.d(
+            "REP_COUNTER",
+            "type=$exerciseForCounting landmarks=${usableBodyLandmarks.size} " +
+                "state=${repSnapshot.state} count=${repSnapshot.count}"
+        )
+        android.util.Log.d(
+            "EXERCISE_CONFIDENCE_TRACE",
+            "detector=${selected.confidence} engine=${selected.confidence} " +
+                "selectedExercise=${selectedExercise.displayName} detectedExercise=$finalExerciseLabel " +
+                "confidence=${selected.confidence}"
+        )
 
         val statusMsg = if (isCorrect) {
             "Great form. ${repSnapshot.instruction}"
@@ -263,6 +288,7 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             feedbackMessage = statusMsg,
             landmarks = bodyLandmarks,
             confidence = postureConfidence,
+            exerciseConfidence = selected.confidence,
             detectedActivity = finalExerciseLabel,
             poseStatus = PoseStatus.VALID
         )
@@ -337,44 +363,126 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         if (landmarks.isEmpty()) return false
 
         val byType = landmarks.associateBy { it.landmarkType }
+        val usable = landmarks.count {
+            isUsable(it)
+        }
         val required = when (selectedExercise) {
-            ExerciseType.PUSH_UPS, ExerciseType.PUSH_UP,
-            ExerciseType.BICEP_CURL, ExerciseType.SHOULDER_PRESS,
             ExerciseType.ARM_RAISE -> listOf(
                 PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
                 PoseLandmark.LEFT_ELBOW, PoseLandmark.RIGHT_ELBOW,
                 PoseLandmark.LEFT_WRIST, PoseLandmark.RIGHT_WRIST
             )
-            else -> listOf(
+            ExerciseType.PUSH_UPS, ExerciseType.PULL_UPS -> listOf(
                 PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
+                PoseLandmark.LEFT_ELBOW, PoseLandmark.RIGHT_ELBOW,
+                PoseLandmark.LEFT_WRIST, PoseLandmark.RIGHT_WRIST
+            )
+            ExerciseType.RUSSIAN_TWISTS -> listOf(
+                PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
+                PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP,
+                PoseLandmark.LEFT_WRIST, PoseLandmark.RIGHT_WRIST
+            )
+            else -> listOf(
                 PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP,
                 PoseLandmark.LEFT_KNEE, PoseLandmark.RIGHT_KNEE,
                 PoseLandmark.LEFT_ANKLE, PoseLandmark.RIGHT_ANKLE
             )
         }
-
-        val missing = required.filter { type ->
-            val landmark = byType[type]
-            landmark == null || landmark.inFrameLikelihood < 0.5f ||
-                !landmark.position.x.isFinite() || !landmark.position.y.isFinite()
+        val requiredUsable = required.count { type -> byType[type]?.let(::isUsable) == true }
+        val minimumRequired = when (selectedExercise) {
+            ExerciseType.ARM_RAISE -> 3
+            ExerciseType.PUSH_UPS, ExerciseType.PULL_UPS -> 4
+            else -> 6
         }
-        if (missing.isNotEmpty()) {
-            android.util.Log.d("POSTURE", "valid pose=no; missing/low-confidence landmarks=${missing.size}")
+        if (usable < 6 || requiredUsable < minimumRequired) {
+            android.util.Log.d(
+                "POSTURE",
+                "valid pose=no; usableLandmarks=$usable requiredUsable=$requiredUsable " +
+                    "required=$minimumRequired exercise=${selectedExercise.displayName}"
+            )
             return false
         }
-
-        val visible = required.mapNotNull { byType[it] }
-        val minX = visible.minOf { it.position.x }
-        val maxX = visible.maxOf { it.position.x }
-        val minY = visible.minOf { it.position.y }
-        val maxY = visible.maxOf { it.position.y }
-        val bodyWidth = maxX - minX
-        val bodyHeight = maxY - minY
-        if (bodyWidth < 0.05f || bodyHeight < 0.05f) {
-            android.util.Log.d("POSTURE", "valid pose=no; body bounds too small: ${bodyWidth}x${bodyHeight}")
-            return false
-        }
+        android.util.Log.d(
+            "POSTURE",
+            "valid pose=yes usableLandmarks=$usable requiredUsable=$requiredUsable " +
+                "requestedExercise=${selectedExercise.displayName}"
+        )
         return true
+    }
+
+    private fun isUsable(landmark: PoseLandmark): Boolean =
+        landmark.inFrameLikelihood >= 0.5f &&
+            landmark.position.x.isFinite() &&
+            landmark.position.y.isFinite() &&
+            landmark.position3D.z.isFinite()
+
+    private data class PoseValidation(
+        val status: PoseStatus,
+        val coreLandmarksPresent: Int,
+        val averageLikelihood: Float,
+        val reason: String
+    )
+
+    private fun validateCurrentPose(landmarks: List<PoseLandmark>, imageWidth: Float, imageHeight: Float): PoseValidation {
+        if (landmarks.isEmpty()) {
+            return PoseValidation(PoseStatus.NO_PERSON, 0, 0f, "No reliable human landmarks")
+        }
+
+        val byType = landmarks.associateBy { it.landmarkType }
+        val coreTypes = listOf(
+            PoseLandmark.NOSE,
+            PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
+            PoseLandmark.LEFT_ELBOW, PoseLandmark.RIGHT_ELBOW,
+            PoseLandmark.LEFT_WRIST, PoseLandmark.RIGHT_WRIST,
+            PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP,
+            PoseLandmark.LEFT_KNEE, PoseLandmark.RIGHT_KNEE,
+            PoseLandmark.LEFT_ANKLE, PoseLandmark.RIGHT_ANKLE
+        )
+        val reliableCore = coreTypes.mapNotNull { byType[it] }
+            .filter { isUsable(it) && it.position.x in 0f..imageWidth && it.position.y in 0f..imageHeight }
+        val averageLikelihood = reliableCore.map { it.inFrameLikelihood }.average().toFloat()
+        val leftShoulder = byType[PoseLandmark.LEFT_SHOULDER]
+        val rightShoulder = byType[PoseLandmark.RIGHT_SHOULDER]
+        val shoulderPairUsable = leftShoulder?.let { isUsable(it) && it.position.x in 0f..imageWidth && it.position.y in 0f..imageHeight } == true &&
+            rightShoulder?.let { isUsable(it) && it.position.x in 0f..imageWidth && it.position.y in 0f..imageHeight } == true
+        val hipUsable = listOf(PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP)
+            .count { byType[it]?.let { landmark -> isUsable(landmark) && landmark.position.x in 0f..imageWidth && landmark.position.y in 0f..imageHeight } == true }
+        val shoulderWidth = if (shoulderPairUsable) {
+            abs(leftShoulder!!.position.x - rightShoulder!!.position.x) / imageWidth
+        } else 0f
+        val shoulderCenterY = if (shoulderPairUsable) {
+            (leftShoulder!!.position.y + rightShoulder!!.position.y) / 2f
+        } else 0f
+        val hipY = listOf(PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP)
+            .mapNotNull { byType[it] }
+            .filter { isUsable(it) && it.position.x in 0f..imageWidth && it.position.y in 0f..imageHeight }
+            .map { it.position.y }
+            .average()
+        val torsoLength = if (hipY.isFinite()) abs(hipY.toFloat() - shoulderCenterY) / imageHeight else 0f
+        val upperChain = listOf(
+            listOf(PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST),
+            listOf(PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST)
+        ).any { chain -> chain.all { byType[it]?.let(::isUsable) == true } }
+        val lowerChain = listOf(
+            listOf(PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE),
+            listOf(PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE)
+        ).any { chain -> chain.all { byType[it]?.let(::isUsable) == true } }
+
+        if (reliableCore.size < 5 || !shoulderPairUsable || hipUsable == 0 ||
+            shoulderWidth !in 0.03f..0.8f || torsoLength !in 0.05f..0.8f || (!upperChain && !lowerChain)) {
+            return PoseValidation(
+                PoseStatus.NO_PERSON,
+                reliableCore.size,
+                averageLikelihood,
+                "No coherent in-bounds human torso and landmark chain"
+            )
+        }
+        return PoseValidation(
+            PoseStatus.VALID,
+            reliableCore.size,
+            averageLikelihood,
+            "Reliable connected human landmarks"
+        )
     }
 
     private fun extract10Features(landmarks: List<PoseLandmark>): FloatArray {
@@ -446,8 +554,8 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             if (lm != null) {
                 features[i * 4] = lm.position.x / imgW
                 features[i * 4 + 1] = lm.position.y / imgH
-                // ML Kit position3D.z is already normalized like MediaPipe's z.
-                features[i * 4 + 2] = lm.position3D.z
+                // MediaPipe training z is normalized by image width; ML Kit exposes z in image units.
+                features[i * 4 + 2] = lm.position3D.z / imgW
                 features[i * 4 + 3] = lm.inFrameLikelihood
             }
         }
@@ -470,11 +578,14 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             val shape = longArrayOf(1, scaledFeat.size.toLong())
             val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(scaledFeat), shape)
             val result = session.run(mapOf(session.inputNames.iterator().next() to tensor))
+            android.util.Log.d("POSTURE_ONNX", "model=original inputShape=${shape.contentToString()} outputCount=${result.size()}")
             val classIdx = ((result[0].value as LongArray)[0]).toInt()
-            val (confidence, margin) = probabilityAndMargin(result, classIdx.toLong())
             val label = origLabels.getOrElse(classIdx) { "Unknown" }
+            val (confidence, margin) = probabilityAndMargin(result, classIdx.toLong(), label)
+            android.util.Log.i("EXERCISE_INFERENCE", "label=$label class=$classIdx confidence=$confidence")
             ExercisePrediction(label, confidence, margin)
         } catch (e: Exception) {
+            android.util.Log.e("EXERCISE_INFERENCE", "original inference failed: ${e.message}", e)
             ExercisePrediction("Unknown", 0f, 0f)
         }
     }
@@ -485,35 +596,93 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             val shape = longArrayOf(1, scaledFeat.size.toLong())
             val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(scaledFeat), shape)
             val result = session.run(mapOf(session.inputNames.iterator().next() to tensor))
+            android.util.Log.d("POSTURE_ONNX", "model=exercise inputShape=${shape.contentToString()} outputCount=${result.size()}")
             val rawOutput = result[0].value
-            val label = if (rawOutput is Array<*>) {
-                rawOutput[0].toString()
-            } else {
-                "Unknown"
-            }
+            val label = firstOutputValue(rawOutput)?.toString() ?: "Unknown"
             val (confidence, margin) = probabilityAndMargin(result, label)
+            android.util.Log.i("EXERCISE_INFERENCE", "label=$label confidence=$confidence")
             ExercisePrediction(label, confidence, margin)
         } catch (e: Exception) {
+            android.util.Log.e("EXERCISE_INFERENCE", "WLU inference failed: ${e.message}", e)
             ExercisePrediction("Unknown", 0f, 0f)
         }
     }
 
-    private fun probabilityAndMargin(result: OrtSession.Result, key: Any): Pair<Float, Float> {
+    private fun probabilityAndMargin(result: OrtSession.Result, key: Any, label: String? = null): Pair<Float, Float> {
         if (result.size() <= 1) return 0f to 0f
-        val probabilityOutput = result[1].value
-        val first = when (probabilityOutput) {
-            is Array<*> -> probabilityOutput.firstOrNull()
-            is List<*> -> probabilityOutput.firstOrNull()
-            else -> null
+        val rawOutput = result[1].value
+        val probabilityMap = firstProbabilityMap(rawOutput) ?: run {
+            android.util.Log.e(
+                "EXERCISE_INFERENCE",
+                "probability output type=${rawOutput?.javaClass?.name} is not a map"
+            )
+            return 0f to 0f
         }
-        val probabilityMap = first as? Map<*, *> ?: return 0f to 0f
         val values = probabilityMap.entries.mapNotNull { (entryKey, entryValue) ->
-            val value = (entryValue as? Number)?.toFloat() ?: return@mapNotNull null
-            entryKey.toString() to value
+            val value = probabilityNumber(entryValue) ?: return@mapNotNull null
+            normalizeProbabilityKey(entryKey) to value
         }.sortedByDescending { it.second }
-        val selected = values.firstOrNull { it.first == key.toString() }?.second ?: 0f
-        val second = values.filterNot { it.first == key.toString() }.firstOrNull()?.second ?: 0f
+        val normalizedKey = normalizeProbabilityKey(key)
+        val normalizedLabel = label?.let { normalizeProbabilityKey(it) }
+        val selected = values.firstOrNull {
+            it.first == normalizedKey || (normalizedLabel != null && it.first == normalizedLabel)
+        }?.second ?: 0f
+        val second = values.filterNot {
+            it.first == normalizedKey || (normalizedLabel != null && it.first == normalizedLabel)
+        }.firstOrNull()?.second ?: 0f
+        android.util.Log.d(
+            "EXERCISE_INFERENCE",
+            "probabilityType=${rawOutput?.javaClass?.name} probabilities=$values " +
+                "selectedKey=$normalizedKey selectedLabel=$normalizedLabel selected=$selected"
+        )
         return selected to (selected - second).coerceAtLeast(0f)
+    }
+
+    private fun probabilityNumber(value: Any?): Float? {
+        return when (value) {
+            is Number -> value.toFloat()
+            is String -> value.toFloatOrNull()
+            else -> try {
+                val nested = value?.javaClass?.getMethod("getValue")?.invoke(value)
+                (nested as? Number)?.toFloat() ?: (nested as? String)?.toFloatOrNull()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    private fun firstOutputValue(value: Any?): Any? {
+        return when (value) {
+            is Iterable<*> -> value.firstOrNull()
+            else -> if (value != null && value.javaClass.isArray && java.lang.reflect.Array.getLength(value) > 0) {
+                java.lang.reflect.Array.get(value, 0)
+            } else {
+                try {
+                    value?.javaClass?.getMethod("getValue")?.invoke(value)?.let(::firstOutputValue)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+    }
+
+    private fun normalizeProbabilityKey(key: Any?): String =
+        key?.toString()?.trim()?.removeSurrounding("\"")?.lowercase() ?: ""
+
+    private fun firstProbabilityMap(value: Any?): Map<*, *>? {
+        return when (value) {
+            is Map<*, *> -> value
+            is Iterable<*> -> value.firstOrNull() as? Map<*, *>
+            else -> if (value != null && value.javaClass.isArray && java.lang.reflect.Array.getLength(value) > 0) {
+                firstProbabilityMap(java.lang.reflect.Array.get(value, 0))
+            } else {
+                try {
+                    firstProbabilityMap(value?.javaClass?.getMethod("getValue")?.invoke(value))
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
     }
 
     private fun runWluPostureInference(scaledFeat: FloatArray): Pair<String, Float> {
@@ -522,9 +691,10 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
             val shape = longArrayOf(1, scaledFeat.size.toLong())
             val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(scaledFeat), shape)
             val result = session.run(mapOf(session.inputNames.iterator().next() to tensor))
+            android.util.Log.d("POSTURE_ONNX", "model=posture inputShape=${shape.contentToString()} outputCount=${result.size()}")
             val classIdx = ((result[0].value as LongArray)[0]).toInt()
-            val confidence = probabilityFor(result, classIdx.toLong())
             val label = wluPostLabels.getOrElse(classIdx) { "Unknown" }
+            val confidence = probabilityFor(result, classIdx.toLong(), label)
             android.util.Log.i(
                 "POSTURE_ONNX",
                 "outputs=${result.size()} output0Type=${result[0].value::class.java.name} output0Raw=${result[0].value} output1Type=${result[1].value::class.java.name} output1Raw=${result[1].value}"
@@ -537,26 +707,23 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         }
     }
 
-    private fun probabilityFor(result: OrtSession.Result, key: Any): Float {
+    private fun probabilityFor(result: OrtSession.Result, key: Any, label: String? = null): Float {
         if (result.size() <= 1) return 0f
-        val probabilityOutput = result[1].value
-        val first = when (probabilityOutput) {
-            is Array<*> -> probabilityOutput.firstOrNull()
-            is List<*> -> probabilityOutput.firstOrNull()
-            else -> null
-        }
-        val probabilityMap = first as? Map<*, *> ?: run {
-            android.util.Log.e("POSTURE_CONF", "Probability output is not a map: ${first?.javaClass?.name}")
+        val probabilityMap = firstProbabilityMap(result[1].value) ?: run {
+            android.util.Log.e("POSTURE_CONF", "Probability output is not a map: ${result[1].value?.javaClass?.name}")
             return 0f
         }
         val entries = probabilityMap.entries.mapNotNull { entry ->
-            val value = (entry.value as? Number)?.toFloat() ?: return@mapNotNull null
+            val value = probabilityNumber(entry.value) ?: return@mapNotNull null
             val numericKey = (entry.key as? Number)?.toLong()
             (numericKey?.toString() ?: entry.key.toString()) to value
         }
-        android.util.Log.d("POSTURE_CONF", "lookupKey=$key mapKeys=${entries.map { it.first }} mapValues=${entries.map { it.second }}")
-        val rawValue = entries.firstOrNull { it.first == key.toString() }?.second ?: run {
-            android.util.Log.e("POSTURE_CONF", "No probability for class key=$key")
+        android.util.Log.d("POSTURE_CONF", "lookupKey=$key label=$label mapKeys=${entries.map { it.first }} mapValues=${entries.map { it.second }}")
+        val rawValue = entries.firstOrNull {
+            it.first == key.toString() ||
+            (label != null && normalizeProbabilityKey(it.first) == normalizeProbabilityKey(label))
+        }?.second ?: run {
+            android.util.Log.e("POSTURE_CONF", "No probability for class key=$key label=$label")
             return 0f
         }
         val sum = entries.sumOf { it.second.toDouble() }.toFloat()
@@ -565,7 +732,10 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
         val maxValue = entries.maxOfOrNull { it.second } ?: return 0f
         val exponentials = entries.map { kotlin.math.exp((it.second - maxValue).toDouble()).toFloat() }
         val exponentialSum = exponentials.sum()
-        val index = entries.indexOfFirst { it.first == key.toString() }
+        val index = entries.indexOfFirst {
+            it.first == key.toString() ||
+            (label != null && normalizeProbabilityKey(it.first) == normalizeProbabilityKey(label))
+        }
         return if (index >= 0 && exponentialSum > 0f) exponentials[index] / exponentialSum else 0f
     }
 
@@ -576,7 +746,7 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
                 name = getLandmarkName(lm.landmarkType),
                 x = lm.position.x / imgW,
                 y = lm.position.y / imgH,
-                z = lm.position3D.z,
+                z = lm.position3D.z / imgW,
                 visibility = lm.inFrameLikelihood
             )
         }
@@ -632,7 +802,7 @@ class ONNXExercisePoseDetector(private val context: Context) : PoseDetector, Aut
     }
 
     override fun reset() {
-        postureHistory.clear()
+        exerciseHistory.clear()
         repCounter.reset()
         previousNormalizedPose = null
         android.util.Log.d("POSTURE", "Pose history reset")

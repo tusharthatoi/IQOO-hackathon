@@ -41,11 +41,17 @@ class FrameAnalyzer(
             return
         }
 
+        if (listener is com.iqoo.wellness.app.WellnessManager && !listener.canAcceptFrame()) {
+            image.close()
+            return
+        }
+
         try {
             lastAnalyzedTimestampMs = currentTimestampMs
             frameId += 1
             val rotationDegrees = image.imageInfo.rotationDegrees
-            android.util.Log.d("CAMERA", "[CAMERA] New frame id=$frameId timestamp=$currentTimestampMs size=${image.width}x${image.height}, rotation=$rotationDegrees")
+            android.util.Log.d("CAMERA_FRAME", "frameId=$frameId timestamp=$currentTimestampMs width=${image.width} height=${image.height} rotation=$rotationDegrees")
+            android.util.Log.d("POSE_ANALYZER", "frameId=$frameId analysisStarted=true")
             val planes = Array(image.planes.size) { i -> image.planes[i].buffer }
 
             val rawBitmap = image.toBitmap()

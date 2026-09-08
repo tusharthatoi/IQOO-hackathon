@@ -116,6 +116,11 @@ class CameraOverlayView @JvmOverloads constructor(
 
     fun updatePostureFeedback(feedback: PostureFeedback?) {
         this.postureFeedback = feedback
+        android.util.Log.d(
+            "POSE_STATE",
+            "result=${feedback?.poseStatus ?: "null"} " +
+                "landmarkCount=${feedback?.landmarks?.size ?: 0}"
+        )
         postInvalidate()
     }
 
@@ -184,9 +189,16 @@ class CameraOverlayView @JvmOverloads constructor(
         val w = width.toFloat()
         val h = height.toFloat()
         val feedback = postureFeedback
-        if (feedback != null && feedback.landmarks.isNotEmpty() && feedback.poseStatus != PoseStatus.NO_PERSON) {
+
+        // STRICT: skeleton is drawn ONLY when the CURRENT frame is VALID with real landmarks.
+        // NO_PERSON and INSUFFICIENT always result in a clear overlay — no stale/cached poses.
+        if (feedback != null &&
+            feedback.poseStatus == PoseStatus.VALID &&
+            feedback.landmarks.isNotEmpty()
+        ) {
             drawSkeleton(canvas, feedback.landmarks, feedback.isFormCorrect, w, h)
         }
+        // Any other case (null, NO_PERSON, INSUFFICIENT) → draw nothing.
     }
 
     private fun drawSkeleton(canvas: Canvas, landmarks: List<BodyLandmark>, isCorrect: Boolean, w: Float, h: Float) {
@@ -201,11 +213,11 @@ class CameraOverlayView @JvmOverloads constructor(
         connections.forEach { (first, second) ->
             val start = byId[first]
             val end = byId[second]
-            if (start != null && end != null) {
+            if (start != null && end != null && start.visibility >= 0.5f && end.visibility >= 0.5f) {
                 canvas.drawLine(start.x * w, start.y * h, end.x * w, end.y * h, paint)
             }
         }
-        byId.values.forEach { lm ->
+        byId.values.filter { it.visibility >= 0.5f }.forEach { lm ->
             canvas.drawCircle(lm.x * w, lm.y * h, 8f, jointPointPaint)
         }
     }

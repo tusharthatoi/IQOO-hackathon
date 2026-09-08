@@ -54,8 +54,10 @@ class CameraManager(
                     imageAnalysis
                 )
 
+                android.util.Log.i("CAMERA_PIPELINE", "ImageAnalysis bound; analyzer attached; mode camera started")
                 onSuccess?.invoke()
             } catch (e: Exception) {
+                android.util.Log.e("CAMERA_PIPELINE", "Camera/ImageAnalysis startup failed: ${e.message}", e)
                 onError?.invoke(e)
             }
         }, ContextCompat.getMainExecutor(context))
